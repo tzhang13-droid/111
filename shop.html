@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>零食小铺</title>
+<style>
+  :root {
+    --wall: #f6e9dc;
+    --wall-2: #efdccb;
+    --floor: #d9b896;
+    --floor-2: #c9a37e;
+    --ink: #3d2b20;
+    --muted: #8a6a55;
+    --accent: #e86a7c;
+    --accent-dark: #b84456;
+    --accent-2: #ffb3bf;
+    --paper: #fffaf3;
+    --ok: #2fae66;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%;
+    background: #2b211b;
+    overflow: hidden;
+    font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+    color: var(--ink);
+    -webkit-user-select: none; user-select: none;
+    touch-action: none;
+  }
+  img { -webkit-user-drag: none; display: block; pointer-events: none; }
+
+  /* 固定 1600×900 舞台，按窗口等比缩放 */
+  #viewport { position: fixed; inset: 0; display: grid; place-items: center; }
+  #stage {
+    position: relative; width: 1600px; height: 900px; flex: none;
+    background: linear-gradient(to bottom, var(--wall) 0%, var(--wall-2) 66%, var(--floor) 66%, var(--floor-2) 100%);
+    overflow: hidden; border-radius: 18px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.45);
+  }
+  .wall-stripe {
+    position: absolute; left: 0; right: 0; top: 0; height: 64px; z-index: 30;
+    background: repeating-linear-gradient(90deg, var(--accent-2) 0 60px, #fff 60px 120px);
+    clip-path: polygon(0 0,100% 0,100% 60%,96% 100%,92% 60%,88% 100%,84% 60%,80% 100%,76% 60%,72% 100%,68% 60%,64% 100%,60% 60%,56% 100%,52% 60%,48% 100%,44% 60%,40% 100%,36% 60%,32% 100%,28% 60%,24% 100%,20% 60%,16% 100%,12% 60%,8% 100%,4% 60%,0 100%);
+    filter: drop-shadow(0 4px 4px rgba(0,0,0,.08));
+    pointer-events: none;
+  }
+
+  /* 顶部：店名 + 步骤条 */
+  #topbar {
+    position: absolute; top: 78px; left: 50%; transform: translateX(-50%); z-index: 30;
+    display: flex; align-items: center; gap: 18px;
+    background: var(--paper); padding: 8px 10px 8px 26px; border-radius: 999px;
+    box-shadow: 0 6px 0 #e9cdb8;
+  }
+  #topbar .logo { font-size: 28px; font-weight: 800; letter-spacing: 4px; color: var(--accent); }
+  .steps { display: flex; gap: 6px; }
+  .step {
+    padding: 8px 18px; border-radius: 999px; font-weight: 800; font-size: 18px;
+    color: var(--muted); background: #f3e4d6; transition: background .3s, color .3s;
+  }
+  .step.on { background: var(--accent); color: #fff; }
+  .step.done { background: #ffd7de; color: var(--accent-dark); }
+
+  /* 三个场景横向排列，切换时整体平移 */
+  #track { position: absolute; left: 0; top: 0; width: 4800px; height: 900px; transition: transform 1s cubic-bezier(.6,0,.3,1); }
+  .scene { position: absolute; top: 0; width: 1600px; height: 900px; }
+  .scene .tiles {
+    position: absolute; left: 0; right: 0; top: 66%; bottom: 0;
+    background: repeating-linear-gradient(90deg, transparent 0 158px, rgba(0,0,0,.06) 158px 160px);
+    border-top: 3px solid rgba(0,0,0,.08);
+  }
+  .hint {
+    position: absolute; left: 0; right: 0; top: 158px; text-align: center;
+    font-size: 20px; color: var(--muted); font-weight: 600;
+  }
+
+  /* ---------- 场景一：选购 ---------- */
+  #shelf { position: absolute; left: 80px; top: 120px; width: 697px; height: 760px; }
+  #shelf > img { width: 100%; height: 100%; filter: drop-shadow(0 18px 18px rgba(0,0,0,.25)); }
+  .unit {
+    position: absolute; cursor: grab;
+    transition: transform .2s cubic-bezier(.3,1.6,.5,1);
+    filter: drop-shadow(0 5px 3px rgba(0,0,0,.35));
+  }
+  .unit img { width: 100%; height: 100%; }
+  .unit:hover { transform: translateY(-8px) scale(1.04); z-index: 5; }
+  .unit.gone { visibility: hidden; }
+  .tag {
+    position: absolute; transform: translateX(-50%);
+    background: #ffe46b; color: #5b3a00; font-weight: 800; font-size: 14px;
+    padding: 0 8px; border-radius: 3px; white-space: nowrap; line-height: 20px;
+    box-shadow: 0 2px 0 rgba(0,0,0,.25); z-index: 6;
+  }
+
+  /* 购物车挂在 track 上，可以从选购区一路推到收银台 */
+  #cart { position: absolute; left: 960px; top: 385px; width: 400px; height: 425px; cursor: pointer; z-index: 8; }
+  #cart.moving { transition: left 1s cubic-bezier(.6,0,.3,1); }
+  #cart > img.cart-img { position: absolute; inset: 0; width: 100%; height: 100%; filter: drop-shadow(0 18px 10px rgba(0,0,0,.25)); z-index: 2; }
+  #cart-items { position: absolute; left: 80px; top: 0; width: 263px; height: 194px; z-index: 1; }
+  #cart-items img { position: absolute; width: 70px; filter: drop-shadow(0 3px 3px rgba(0,0,0,.3)); }
+  #cart.hot > img.cart-img { filter: drop-shadow(0 0 22px rgba(232,106,124,.9)); }
+  #cart.bump { animation: bump .45s; }
+  @keyframes bump { 30% { transform: rotate(-3deg) translateY(4px); } 60% { transform: rotate(2deg); } }
+  #cart-count {
+    position: absolute; right: 26px; top: 92px; z-index: 3;
+    min-width: 46px; height: 46px; border-radius: 23px; padding: 0 10px;
+    background: var(--accent); color: #fff; font-weight: 800; font-size: 22px;
+    display: grid; place-items: center; box-shadow: 0 3px 0 var(--accent-dark);
+    transform: scale(0); transition: transform .3s cubic-bezier(.3,1.8,.5,1);
+  }
+  #cart-count.show { transform: scale(1); }
+
+  #list {
+    position: absolute; left: 1390px; top: 210px; width: 190px;
+    background: var(--paper); border-radius: 16px; padding: 14px 16px;
+    box-shadow: 0 6px 0 #e9cdb8; font-size: 15px;
+  }
+  #list h3 { margin: 0 0 8px; font-size: 17px; }
+  #list .row { display: flex; justify-content: space-between; gap: 6px; line-height: 1.7; }
+  #list .row span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #list .empty { color: var(--muted); }
+
+  /* ---------- 场景二：结账 ---------- */
+  #clerk { position: absolute; left: 990px; top: 60px; width: 224px; height: 810px; }
+  #clerk img { width: 100%; height: 100%; }
+  #clerk.sway { animation: sway 1s ease-in-out 2; transform-origin: 50% 100%; }
+  @keyframes sway { 25% { transform: rotate(-1.5deg); } 75% { transform: rotate(1.5deg); } }
+  #counter { position: absolute; left: 700px; top: 340px; width: 680px; height: 557px; }
+  #counter img { width: 100%; height: 100%; filter: drop-shadow(0 18px 14px rgba(0,0,0,.25)); }
+  #screen {
+    position: absolute; left: 1094px; top: 378px; width: 104px; height: 40px;
+    background: #12261b; color: #6dff9a; border-radius: 5px;
+    font: 700 19px/40px ui-monospace, Menlo, monospace; text-align: center;
+  }
+  .bubble {
+    position: absolute; left: 640px; top: 210px; width: 330px;
+    background: var(--paper); border-radius: 22px; padding: 16px 20px;
+    font-size: 21px; line-height: 1.45; font-weight: 600;
+    box-shadow: 0 8px 20px rgba(0,0,0,.15);
+  }
+  .bubble::after {
+    content: ""; position: absolute; right: -20px; top: 30px;
+    border: 10px solid transparent; border-left: 20px solid var(--paper);
+  }
+  .bubble.pop { animation: pop .35s; }
+  @keyframes pop { from { transform: scale(.85); opacity: .3; } }
+  .c-item {
+    position: absolute; cursor: pointer; z-index: 9;
+    filter: drop-shadow(0 5px 3px rgba(0,0,0,.35));
+    transition: transform .2s;
+  }
+  .c-item img { width: 100%; height: 100%; }
+  .c-item:not(.scanned):hover { transform: translateY(-8px); }
+  .c-item .check {
+    position: absolute; right: -6px; top: -6px; width: 26px; height: 26px; border-radius: 13px;
+    background: var(--ok); color: #fff; font-weight: 900; font-size: 16px;
+    display: grid; place-items: center; transform: scale(0); transition: transform .3s cubic-bezier(.3,1.8,.5,1);
+  }
+  .c-item.scanned { cursor: default; }
+  .c-item.scanned .check { transform: scale(1); }
+  .beam {
+    position: absolute; left: -10%; width: 120%; height: 4px; top: 0;
+    background: #ff2a3d; box-shadow: 0 0 10px 3px rgba(255,42,61,.7);
+    animation: beam .45s ease-in-out;
+  }
+  @keyframes beam { from { top: 0; } 50% { top: 100%; } to { top: 0; opacity: 0; } }
+  #pay {
+    position: absolute; left: 50px; top: 200px; width: 330px; z-index: 12;
+    background: var(--paper); border-radius: 18px; padding: 18px 20px;
+    box-shadow: 0 6px 0 #e9cdb8;
+    opacity: 0; transform: translateY(10px); pointer-events: none; transition: opacity .3s, transform .3s;
+  }
+  #pay.show { opacity: 1; transform: none; pointer-events: auto; }
+  #pay h3 { margin: 0 0 4px; font-size: 20px; }
+  #pay .due { font-size: 34px; font-weight: 900; color: var(--accent); margin-bottom: 12px; }
+  #pay .methods { display: grid; gap: 10px; }
+  .pay-btn {
+    border: 2px solid #ecd9c8; background: #fff; border-radius: 12px; padding: 10px 14px;
+    font: inherit; font-weight: 800; font-size: 18px; cursor: pointer; text-align: left;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .pay-btn:hover { border-color: var(--accent); }
+  .pay-btn i { font-style: normal; width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; color: #fff; font-size: 16px; }
+  #pay .paid { display: none; text-align: center; font-size: 26px; font-weight: 900; color: var(--ok); padding: 18px 0 6px; }
+  #pay.done .methods { display: none; }
+  #pay.done .paid { display: block; animation: pop .4s; }
+
+  /* ---------- 场景三：装袋 ---------- */
+  #table {
+    position: absolute; left: 0; right: 0; top: 650px; bottom: 0;
+    background: linear-gradient(#b98457, #a06c42 18px, #8e5d37);
+    box-shadow: inset 0 6px 0 #d3a174;
+  }
+  #bag { position: absolute; left: 600px; top: 235px; width: 403px; height: 520px; }
+  #bag.hot .bag-img { filter: drop-shadow(0 0 24px rgba(232,106,124,.9)); }
+  #bag .bag-img { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; filter: drop-shadow(0 14px 10px rgba(0,0,0,.25)); }
+  #bag .logo {
+    position: absolute; left: 0; right: 0; top: 58%; z-index: 3; text-align: center;
+    color: var(--accent); font-weight: 900; font-size: 34px; letter-spacing: 6px;
+  }
+  #bag-inside { position: absolute; inset: 0; z-index: 1; }
+  #bag-inside img { position: absolute; width: 80px; }
+  #bag.hop { animation: hop .6s; }
+  @keyframes hop { 40% { transform: translateY(-30px); } 70% { transform: translateY(4px); } }
+  #bag-count {
+    position: absolute; left: 1060px; top: 330px;
+    background: var(--paper); border-radius: 16px; padding: 12px 18px; font-size: 20px; font-weight: 800;
+    box-shadow: 0 6px 0 #e9cdb8;
+  }
+  .t-item {
+    position: absolute; cursor: grab; z-index: 9;
+    filter: drop-shadow(0 6px 4px rgba(0,0,0,.35));
+    transition: transform .2s cubic-bezier(.3,1.6,.5,1);
+  }
+  .t-item img { width: 100%; height: 100%; }
+  .t-item:hover { transform: translateY(-10px) rotate(-3deg); }
+  .t-item.gone { visibility: hidden; }
+
+  /* 通用 */
+  .hud { position: absolute; right: 30px; bottom: 26px; display: flex; gap: 12px; align-items: center; z-index: 20; }
+  .chip { background: var(--paper); border-radius: 999px; padding: 10px 20px; font-weight: 800; font-size: 20px; box-shadow: 0 4px 0 rgba(0,0,0,.18); }
+  .btn {
+    border: 0; cursor: pointer; font: inherit; font-weight: 800; font-size: 20px;
+    padding: 12px 26px; border-radius: 999px;
+    background: var(--accent); color: #fff; box-shadow: 0 5px 0 var(--accent-dark);
+    transition: opacity .2s;
+  }
+  .btn:active { transform: translateY(3px); box-shadow: 0 2px 0 var(--accent-dark); }
+  .btn:disabled { opacity: .4; cursor: default; transform: none; }
+  .btn.light { background: var(--paper); color: var(--ink); box-shadow: 0 5px 0 rgba(0,0,0,.18); }
+  .ghost { position: absolute; z-index: 50; pointer-events: none; filter: drop-shadow(0 16px 10px rgba(0,0,0,.35)); transform: rotate(-6deg) scale(1.08); }
+  .flyer { position: absolute; z-index: 40; pointer-events: none; }
+  .float {
+    position: absolute; z-index: 45; pointer-events: none; white-space: nowrap;
+    background: var(--paper); border-radius: 999px; padding: 6px 14px;
+    font-weight: 800; font-size: 17px; color: var(--accent-dark);
+    box-shadow: 0 4px 10px rgba(0,0,0,.15);
+    animation: floatUp 1.3s ease-out forwards;
+  }
+  @keyframes floatUp { from { opacity: 0; transform: translate(-50%, 10px); } 20% { opacity: 1; transform: translate(-50%, 0); } to { opacity: 0; transform: translate(-50%, -50px); } }
+
+  /* 小票 */
+  #receipt-wrap {
+    position: absolute; inset: 0; z-index: 60; background: rgba(40,25,18,.45);
+    display: grid; place-items: center; opacity: 0; pointer-events: none; transition: opacity .3s;
+  }
+  #receipt-wrap.show { opacity: 1; pointer-events: auto; }
+  #receipt {
+    width: 390px; background: #fff; padding: 26px 28px 36px;
+    font: 500 17px/1.6 ui-monospace, Menlo, "PingFang SC", monospace;
+    transform: translateY(-40px); transition: transform .45s cubic-bezier(.3,1.4,.5,1);
+    clip-path: polygon(0 0,100% 0,100% calc(100% - 12px),95% 100%,90% calc(100% - 12px),85% 100%,80% calc(100% - 12px),75% 100%,70% calc(100% - 12px),65% 100%,60% calc(100% - 12px),55% 100%,50% calc(100% - 12px),45% 100%,40% calc(100% - 12px),35% 100%,30% calc(100% - 12px),25% 100%,20% calc(100% - 12px),15% 100%,10% calc(100% - 12px),5% 100%,0 calc(100% - 12px));
+  }
+  #receipt-wrap.show #receipt { transform: none; }
+  #receipt h2 { margin: 0 0 4px; text-align: center; font-size: 24px; letter-spacing: 4px; }
+  #receipt .sub { text-align: center; color: #888; font-size: 14px; margin-bottom: 12px; }
+  #receipt .row { display: flex; justify-content: space-between; gap: 12px; }
+  #receipt hr { border: 0; border-top: 2px dashed #ccc; margin: 10px 0; }
+  #receipt .total { font-weight: 800; font-size: 22px; }
+  #receipt .thanks { text-align: center; margin: 14px 0 16px; color: var(--accent); font-weight: 800; }
+  #receipt .btn { display: block; margin: 0 auto; }
+</style>
+</head>
+<body>
+<div id="viewport">
+  <div id="stage">
+    <div class="wall-stripe"></div>
+    <div id="topbar">
+      <span class="logo">零食小铺</span>
+      <div class="steps">
+        <span class="step on">① 选购</span>
+        <span class="step">② 结账</span>
+        <span class="step">③ 装袋</span>
+      </div>
+    </div>
+
+    <div id="track">
+      <!-- 场景一：选购 -->
+      <section class="scene" id="s-shop" style="left:0">
+        <div class="tiles"></div>
+        <div class="hint" style="left:780px">把零食拖进购物车，或者点一下直接放进去</div>
+        <div id="shelf"><img src="assets/shelf.webp" alt="货架"></div>
+        <div id="list"><h3>🛒 购物车</h3><div id="list-rows"></div></div>
+        <div class="hud">
+          <div class="chip" id="total">合计 ¥0.0</div>
+          <button class="btn light" id="undo" disabled>拿出最后一件</button>
+          <button class="btn" id="to-checkout" disabled>去结账 →</button>
+        </div>
+      </section>
+
+      <!-- 场景二：结账 -->
+      <section class="scene" id="s-checkout" style="left:1600px">
+        <div class="tiles"></div>
+        <div class="hint" id="hint2">点一下台面上的零食来扫码</div>
+        <div id="clerk"><img src="assets/clerk.webp" alt="店员"></div>
+        <div id="counter"><img src="assets/counter.webp" alt="收银台"></div>
+        <div id="screen">¥0.0</div>
+        <div class="bubble" id="bubble">欢迎光临～</div>
+        <div id="pay">
+          <h3>应付金额</h3>
+          <div class="due" id="due">¥0.0</div>
+          <div class="methods">
+            <button class="pay-btn" data-m="微信支付"><i style="background:#22b35e">微</i>微信支付</button>
+            <button class="pay-btn" data-m="支付宝"><i style="background:#1677ff">支</i>支付宝</button>
+            <button class="pay-btn" data-m="现金"><i style="background:#e0a100">¥</i>现金</button>
+          </div>
+          <div class="paid">✓ 支付成功</div>
+        </div>
+        <div class="hud">
+          <button class="btn light" id="scan-all">全部扫码</button>
+          <button class="btn" id="to-bag" disabled>去装袋 →</button>
+        </div>
+      </section>
+
+      <!-- 场景三：装袋 -->
+      <section class="scene" id="s-bag" style="left:3200px">
+        <div id="table"></div>
+        <div class="hint">把零食拖进纸袋里，或者点一下直接装进去</div>
+        <div id="bag">
+          <div id="bag-inside"></div>
+          <img class="bag-img" src="assets/bag.webp" alt="纸袋">
+          <div class="logo">零食小铺</div>
+        </div>
+        <div id="bag-count">已装 0 / 0</div>
+        <div id="table-items"></div>
+      </section>
+
+      <div id="cart" title="看看车里有什么">
+        <div id="cart-items"></div>
+        <img class="cart-img" src="assets/cart.webp" alt="购物车">
+        <div id="cart-count">0</div>
+      </div>
+    </div>
+
+    <div id="receipt-wrap">
+      <div id="receipt">
+        <h2>零食小铺</h2>
+        <div class="sub" id="r-time"></div>
+        <div id="r-rows"></div>
+        <hr>
+        <div class="row total"><span>合计</span><span id="r-total"></span></div>
+        <div class="row" style="color:#888"><span>支付方式</span><span id="r-method"></span></div>
+        <div class="thanks">谢谢惠顾，欢迎再来！</div>
+        <button class="btn" id="again">再逛一次</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* 商品：名称、价格、图片宽高比（宽/高） */
+const P = {
+  1: { name: "爆米花 芝士味",     price: 8.5,  ar: 0.79 },
+  2: { name: "乐事 黄瓜味",       price: 7.0,  ar: 0.825 },
+  3: { name: "好丽友 乌龟玉米片", price: 9.9,  ar: 0.79 },
+  4: { name: "辣味鲜虾条",        price: 6.5,  ar: 0.72 },
+  5: { name: "KAKA 鱼酥条",       price: 12.0, ar: 1.097 },
+  6: { name: "农心 蜂蜜麻花",     price: 8.0,  ar: 0.66 },
+  7: { name: "上好佳 鲜虾片",     price: 5.5,  ar: 0.775 },
+  8: { name: "辣味拉面丸子",      price: 6.0,  ar: 0.767 },
+  9: { name: "呀！土豆",          price: 7.5,  ar: 0.70 },
+};
+const src = id => `assets/snack${id}.webp`;
+
+/* 货架四层摆满。数字是商品编号，同款挨着摆 */
+const LAYOUT = [
+  [1, 1, 2, 2, 2],
+  [3, 3, 4, 4, 4],
+  [5, 5, 6, 6, 6],
+  [7, 7, 8, 8, 9, 9],
+];
+/* 货架图片里每层隔板的位置（占图片高度的比例）：商品站在 STAND 上，价签贴在 LIP 上 */
+const STAND = [0.362, 0.543, 0.730, 0.952];
+const LIP   = [0.373, 0.553, 0.740, 0.972];
+const INNER = [0.10, 0.94];         // 立柱之间可摆放的横向范围
+const UNIT_H = 104;                 // 每层高度约 130px，商品高 104px 不会碰到上一层
+
+const $ = s => document.querySelector(s);
+const stage = $("#stage"), track = $("#track"), shelf = $("#shelf");
+const cart = $("#cart"), cartItems = $("#cart-items"), countEl = $("#cart-count");
+
+let scale = 1, scene = 0, busy = false;
+let units = [];       // 货架上的每一件 {uid, id, el}
+let basket = [];      // 购物车里的 uid（按放入顺序）
+let payMethod = "";
+
+/* ---------- 舞台缩放与坐标 ---------- */
+function fit() {
+  scale = Math.min(innerWidth / 1600, innerHeight / 900) * 0.98;
+  stage.style.transform = `scale(${scale})`;
+}
+addEventListener("resize", fit); fit();
+function toStage(x, y) {
+  const r = stage.getBoundingClientRect();
+  return { x: (x - r.left) / scale, y: (y - r.top) / scale };
+}
+function rectOf(el) {
+  const r = el.getBoundingClientRect(), s = stage.getBoundingClientRect();
+  return { x: (r.left - s.left) / scale, y: (r.top - s.top) / scale, w: r.width / scale, h: r.height / scale };
+}
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const money = n => `¥${n.toFixed(1)}`;
+const total = ids => ids.reduce((t, id) => t + P[id].price, 0);
+const basketIds = () => basket.map(uid => units[uid].id);
+
+/* ---------- 音效 ---------- */
+let actx;
+function beep(freq = 880, dur = 0.08, type = "square", vol = 0.05) {
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type; o.frequency.value = freq;
+    g.gain.setValueAtTime(vol, actx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + dur);
+    o.connect(g).connect(actx.destination);
+    o.start(); o.stop(actx.currentTime + dur);
+  } catch (e) {}
+}
+const plop = () => { beep(520, .07, "sine", .12); setTimeout(() => beep(780, .09, "sine", .1), 60); };
+const ding = () => { beep(660, .1, "triangle", .08); setTimeout(() => beep(990, .18, "triangle", .08), 110); };
+
+/* ---------- 动画工具 ---------- */
+function fly(id, from, to, { dur = 600, arc = 140, rot = 20 } = {}) {
+  const img = document.createElement("img");
+  img.className = "flyer"; img.src = src(id);
+  Object.assign(img.style, { left: from.x + "px", top: from.y + "px", width: from.w + "px", height: from.h + "px" });
+  stage.appendChild(img);
+  const dx = to.x - from.x, dy = to.y - from.y, sx = to.w / from.w, sy = to.h / from.h;
+  const frames = [];
+  for (let i = 0; i <= 12; i++) {
+    const t = i / 12;
+    frames.push({
+      transformOrigin: "0 0",
+      transform: `translate(${dx * t}px, ${dy * t - arc * 4 * t * (1 - t)}px) rotate(${rot * t}deg) scale(${1 + (sx - 1) * t}, ${1 + (sy - 1) * t})`,
+    });
+  }
+  return img.animate(frames, { duration: dur, easing: "cubic-bezier(.4,0,.6,1)", fill: "forwards" })
+    .finished.then(() => img.remove());
+}
+function floatText(x, y, text) {
+  const f = document.createElement("div");
+  f.className = "float"; f.textContent = text;
+  f.style.left = x + "px"; f.style.top = y + "px";
+  stage.appendChild(f);
+  setTimeout(() => f.remove(), 1400);
+}
+function bounce(el, cls) { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); }
+
+/* ---------- 场景切换 ---------- */
+async function goScene(i) {
+  scene = i;
+  track.style.transform = `translateX(${-1600 * i}px)`;
+  document.querySelectorAll(".step").forEach((s, k) => {
+    s.classList.toggle("on", k === i);
+    s.classList.toggle("done", k < i);
+  });
+  await wait(1000);
+}
+
+/* ---------- 通用拖拽：按下 → 拖动 → 放到目标上；没拖动就当点击 ---------- */
+let drag = null;
+const dragRules = [];   // {scene, selector, target, onDrop(el, fromRect), onMiss(el, fromRect)}
+stage.addEventListener("pointerdown", e => {
+  if (busy) return;
+  for (const r of dragRules) {
+    const el = r.scene === scene && e.target.closest(r.selector);
+    if (el && !el.classList.contains("gone")) {
+      e.preventDefault();
+      drag = { r, el, start: toStage(e.clientX, e.clientY), moved: false };
+      return;
+    }
+  }
+});
+stage.addEventListener("pointermove", e => {
+  if (!drag) return;
+  const p = toStage(e.clientX, e.clientY);
+  if (!drag.moved && Math.hypot(p.x - drag.start.x, p.y - drag.start.y) > 6) {
+    const r = rectOf(drag.el);
+    drag.moved = true;
+    drag.off = { x: drag.start.x - r.x, y: drag.start.y - r.y };
+    drag.ghost = document.createElement("img");
+    drag.ghost.className = "ghost"; drag.ghost.src = drag.el.querySelector("img").src;
+    drag.ghost.style.width = r.w + "px"; drag.ghost.style.height = r.h + "px";
+    stage.appendChild(drag.ghost);
+    drag.el.classList.add("gone");
+  }
+  if (drag.moved) {
+    drag.ghost.style.left = p.x - drag.off.x + "px";
+    drag.ghost.style.top = p.y - drag.off.y + "px";
+    drag.r.target().classList.toggle("hot", over(drag.r.target(), p));
+  }
+});
+stage.addEventListener("pointerup", e => {
+  if (!drag) return;
+  const d = drag; drag = null;
+  d.r.target().classList.remove("hot");
+  if (!d.moved) { d.r.onDrop(d.el, rectOf(d.el)); return; }
+  const from = rectOf(d.ghost);
+  d.ghost.remove();
+  if (over(d.r.target(), toStage(e.clientX, e.clientY))) d.r.onDrop(d.el, from);
+  else d.r.onMiss(d.el, from);
+});
+function over(el, p) {
+  const r = rectOf(el);
+  return p.x > r.x - 30 && p.x < r.x + r.w + 30 && p.y > r.y - 80 && p.y < r.y + r.h;
+}
+function flyHome(el, id, from) {
+  fly(id, from, rectOf(el), { dur: 380, arc: 40, rot: 0 }).then(() => el.classList.remove("gone"));
+}
+
+/* =================================================================
+   场景一：选购
+   ================================================================= */
+function buildShelf() {
+  shelf.querySelectorAll(".unit, .tag").forEach(n => n.remove());
+  units = [];
+  const W = shelf.offsetWidth, H = shelf.offsetHeight;
+  const left = W * INNER[0], inner = W * (INNER[1] - INNER[0]);
+  LAYOUT.forEach((row, ri) => {
+    const widths = row.map(id => Math.round(UNIT_H * P[id].ar));
+    const gap = (inner - widths.reduce((a, b) => a + b, 0)) / (row.length + 1);
+    let x = left + gap;
+    const groups = [];
+    row.forEach((id, k) => {
+      const el = document.createElement("div");
+      el.className = "unit";
+      el.dataset.uid = units.length;
+      Object.assign(el.style, { left: x + "px", top: H * STAND[ri] - UNIT_H + "px", width: widths[k] + "px", height: UNIT_H + "px" });
+      el.innerHTML = `<img src="${src(id)}" alt="${P[id].name}">`;
+      shelf.appendChild(el);
+      units.push({ uid: units.length, id, el });
+      const g = groups[groups.length - 1];
+      if (g && g.id === id) g.end = x + widths[k];
+      else groups.push({ id, start: x, end: x + widths[k] });
+      x += widths[k] + gap;
+    });
+    groups.forEach(g => {
+      const t = document.createElement("div");
+      t.className = "tag";
+      t.textContent = money(P[g.id].price);
+      t.style.left = (g.start + g.end) / 2 + "px";
+      t.style.top = H * LIP[ri] - 6 + "px";
+      shelf.appendChild(t);
+    });
+  });
+}
+
+function cartSlot(n) {
+  const col = n % 4, layer = Math.floor(n / 4);
+  return { x: 4 + col * 60 + (layer % 2) * 24, y: 84 - layer * 20, rot: (n * 37 % 30) - 15 };
+}
+function renderCartItem(uid, n) {
+  const s = cartSlot(n), it = document.createElement("img");
+  it.src = src(units[uid].id); it.dataset.uid = uid;
+  it.style.left = s.x + "px"; it.style.top = s.y + "px"; it.style.transform = `rotate(${s.rot}deg)`;
+  cartItems.appendChild(it);
+  return it;
+}
+
+dragRules.push({
+  scene: 0, selector: ".unit", target: () => cart,
+  onDrop(el, from) {
+    const uid = +el.dataset.uid, id = units[uid].id;
+    el.classList.add("gone");
+    const s = cartSlot(basket.length);
+    basket.push(uid);
+    updateShop();
+    const cr = rectOf(cartItems);
+    fly(id, from, { x: cr.x + s.x, y: cr.y + s.y, w: 70, h: 70 / P[id].ar }, { dur: 620, arc: 160, rot: s.rot }).then(() => {
+      if (!basket.includes(uid)) return;
+      renderCartItem(uid, basket.indexOf(uid));
+      bounce(cart, "bump"); plop();
+      const r = rectOf(cart);
+      floatText(r.x + r.w / 2, r.y - 30, `+ ${P[id].name} ${money(P[id].price)}`);
+    });
+  },
+  onMiss(el, from) { flyHome(el, units[+el.dataset.uid].id, from); },
+});
+
+$("#undo").addEventListener("click", () => {
+  if (!basket.length) return;
+  const uid = basket.pop(), u = units[uid];
+  const it = cartItems.querySelector(`img[data-uid="${uid}"]`);
+  updateShop();
+  if (!it) { u.el.classList.remove("gone"); return; }
+  const from = rectOf(it);
+  it.remove();
+  fly(u.id, from, rectOf(u.el), { dur: 520, arc: 120, rot: 0 }).then(() => u.el.classList.remove("gone"));
+});
+
+cart.addEventListener("click", () => {
+  if (scene !== 0 || drag) return;
+  const r = rectOf(cart);
+  floatText(r.x + r.w / 2, r.y - 30, basket.length ? `${basket.length} 件 · ${money(total(basketIds()))}` : "购物车还是空的");
+});
+
+function updateShop() {
+  const ids = basketIds(), n = ids.length;
+  countEl.textContent = n;
+  countEl.classList.toggle("show", n > 0);
+  $("#total").textContent = `合计 ${money(total(ids))}`;
+  $("#to-checkout").disabled = !n;
+  $("#undo").disabled = !n;
+  const counts = {};
+  ids.forEach(id => counts[id] = (counts[id] || 0) + 1);
+  $("#list-rows").innerHTML = n
+    ? Object.entries(counts).map(([id, c]) => `<div class="row"><span>${P[id].name}</span><span>×${c}</span></div>`).join("")
+    : `<div class="empty">还没有挑东西</div>`;
+}
+
+/* =================================================================
+   场景二：结账
+   ================================================================= */
+const s2 = $("#s-checkout"), bubble = $("#bubble"), screen = $("#screen"), pay = $("#pay");
+let counterItems = [];   // {id, el, scanned}
+let running = 0;
+
+function say(html) { bubble.innerHTML = html; bounce(bubble, "pop"); }
+
+/* 收银台台面上的摆放位置（场景坐标）。东西多时摆成前后两排 */
+function counterSlots(n) {
+  const perRow = n <= 7 ? n : Math.ceil(n / 2);
+  const x0 = 730, width = 600, h = 92;
+  const step = Math.min(84, width / perRow);
+  return Array.from({ length: n }, (_, i) => {
+    const row = n <= 7 ? 0 : (i < perRow ? 0 : 1);
+    const k = row ? i - perRow : i;
+    return { x: x0 + k * step + row * step / 2, bottom: row ? 536 : 512, h: row ? h : h - 6, z: 9 + row };
+  });
+}
+
+$("#to-checkout").addEventListener("click", async () => {
+  if (busy || !basket.length) return;
+  busy = true;
+  $("#to-checkout").disabled = $("#undo").disabled = true;
+  // 购物车跟着镜头推到收银台
+  cart.classList.add("moving");
+  cart.style.left = 1600 + 150 + "px";
+  say("欢迎光临～<br>我帮你把东西拿上来");
+  await goScene(1);
+  cart.classList.remove("moving");
+
+  running = 0; screen.textContent = money(0);
+  pay.classList.remove("show", "done");
+  $("#to-bag").disabled = true;
+  $("#scan-all").disabled = false;
+  $("#hint2").textContent = "点一下台面上的零食来扫码";
+  const slots = counterSlots(basket.length);
+  counterItems = [];
+  const imgs = [...cartItems.children];
+  for (let i = 0; i < imgs.length; i++) {
+    const id = units[+imgs[i].dataset.uid].id, s = slots[i];
+    const w = s.h * P[id].ar;
+    const from = rectOf(imgs[i]);
+    imgs[i].remove();
+    await fly(id, from, { x: s.x, y: s.bottom - s.h, w, h: s.h }, { dur: 380, arc: 120, rot: 0 });
+    const el = document.createElement("div");
+    el.className = "c-item";
+    Object.assign(el.style, { left: s.x + "px", top: s.bottom - s.h + "px", width: w + "px", height: s.h + "px", zIndex: s.z });
+    el.innerHTML = `<img src="${src(id)}"><div class="check">✓</div>`;
+    s2.appendChild(el);
+    const item = { id, el, scanned: false };
+    el.addEventListener("click", () => scan(item));
+    counterItems.push(item);
+    beep(400, .04, "sine", .06);
+  }
+  countEl.classList.remove("show");
+  say(`一共 ${counterItems.length} 件<br>点一下商品就能扫码哦`);
+  busy = false;
+});
+
+async function scan(item) {
+  if (item.scanned || scene !== 1 || pay.classList.contains("done")) return;
+  item.scanned = true;
+  const beam = document.createElement("div");
+  beam.className = "beam";
+  item.el.appendChild(beam);
+  beep(1320, .09);
+  setTimeout(() => beam.remove(), 460);
+  item.el.classList.add("scanned");
+  running += P[item.id].price;
+  screen.textContent = money(running);
+  const r = rectOf(item.el);
+  floatText(r.x + r.w / 2, r.y - 34, `${P[item.id].name} ${money(P[item.id].price)}`);
+  if (counterItems.every(it => it.scanned)) {
+    $("#scan-all").disabled = true;
+    await wait(500);
+    say(`一共 ${money(running)}～<br>请选择支付方式`);
+    $("#due").textContent = money(running);
+    $("#hint2").textContent = "全部扫好了，选一个支付方式";
+    pay.classList.add("show");
+  }
+}
+
+$("#scan-all").addEventListener("click", async () => {
+  $("#scan-all").disabled = true;
+  for (const it of counterItems) {
+    if (!it.scanned) { scan(it); await wait(260); }
+  }
+});
+
+pay.querySelectorAll(".pay-btn").forEach(b => b.addEventListener("click", () => {
+  payMethod = b.dataset.m;
+  pay.classList.add("done");
+  ding();
+  bounce($("#clerk"), "sway");
+  say(`${payMethod}收款成功！<br>去旁边装袋吧～`);
+  $("#hint2").textContent = "付好啦，去装袋";
+  $("#to-bag").disabled = false;
+}));
+
+/* =================================================================
+   场景三：装袋
+   ================================================================= */
+const bag = $("#bag"), bagInside = $("#bag-inside"), tableItems = $("#table-items");
+let packed = 0;
+
+/* 桌面上纸袋两侧的摆放位置（场景坐标） */
+function tableSlots(n) {
+  const left = Math.ceil(n / 2), right = n - left;
+  const side = (count, x0, x1) => {
+    const perRow = Math.min(5, count), rows = Math.ceil(count / 5);
+    return Array.from({ length: count }, (_, i) => {
+      const row = Math.floor(i / perRow), k = i % perRow;
+      const step = (x1 - x0) / perRow;
+      return { cx: x0 + step * (k + .5) + (row % 2) * 20, bottom: 800 + row * 60 - (rows - 1) * 30, z: 9 + row };
+    });
+  };
+  return [...side(left, 50, 580), ...side(right, 1030, 1560)];
+}
+
+$("#to-bag").addEventListener("click", async () => {
+  if (busy) return;
+  busy = true;
+  $("#to-bag").disabled = true;
+  bagInside.innerHTML = ""; tableItems.innerHTML = "";
+  packed = 0;
+  await goScene(2);
+  const slots = tableSlots(counterItems.length), H = 118;
+  $("#bag-count").textContent = `已装 0 / ${counterItems.length}`;
+  counterItems.forEach((it, i) => {
+    const s = slots[i], w = H * P[it.id].ar;
+    const el = document.createElement("div");
+    el.className = "t-item";
+    el.dataset.id = it.id;
+    Object.assign(el.style, { left: s.cx - w / 2 + "px", top: s.bottom - H + "px", width: w + "px", height: H + "px", zIndex: s.z });
+    el.innerHTML = `<img src="${src(it.id)}">`;
+    el.animate([{ transform: "translateY(-260px)", opacity: 0 }, { transform: "none", opacity: 1 }],
+      { duration: 450, delay: i * 70, easing: "cubic-bezier(.3,1.4,.5,1)", fill: "backwards" });
+    tableItems.appendChild(el);
+  });
+  busy = false;
+});
+
+/* 装进袋子：商品放在纸袋图片后面，只露出上半截 */
+function bagSlot(n) {
+  const xs = [70, 190, 130, 250, 100, 220, 160];
+  return { x: xs[n % xs.length] + (Math.floor(n / 7) % 2) * 18, peek: 34 + Math.min(n, 12) * 4, rot: (n * 53 % 24) - 12 };
+}
+dragRules.push({
+  scene: 2, selector: ".t-item", target: () => bag,
+  onDrop(el, from) {
+    const id = +el.dataset.id;
+    el.classList.add("gone");
+    const s = bagSlot(packed++);
+    const bodyTop = bag.offsetHeight * 0.30;
+    const w = 80, h = w / P[id].ar, top = bodyTop - s.peek;
+    const br = rectOf(bag);
+    fly(id, from, { x: br.x + s.x, y: br.y + top, w, h }, { dur: 560, arc: 180, rot: s.rot }).then(() => {
+      el.remove();
+      const im = document.createElement("img");
+      im.src = src(id);
+      Object.assign(im.style, { left: s.x + "px", top: top + "px", transform: `rotate(${s.rot}deg)` });
+      bagInside.appendChild(im);
+      plop(); bounce(bag, "hop");
+      const n = counterItems.length;
+      $("#bag-count").textContent = `已装 ${bagInside.children.length} / ${n}`;
+      if (bagInside.children.length === n) finish();
+    });
+  },
+  onMiss(el, from) { flyHome(el, +el.dataset.id, from); },
+});
+
+async function finish() {
+  busy = true;
+  await wait(500);
+  $("#bag-count").textContent = "装好啦 ✓";
+  ding();
+  await wait(700);
+  showReceipt(counterItems.map(it => it.id));
+  busy = false;
+}
+
+/* ---------- 小票 & 重来 ---------- */
+function showReceipt(ids) {
+  const counts = {};
+  ids.forEach(id => counts[id] = (counts[id] || 0) + 1);
+  $("#r-rows").innerHTML = Object.entries(counts).map(([id, n]) =>
+    `<div class="row"><span>${P[id].name} ×${n}</span><span>${money(P[id].price * n)}</span></div>`).join("");
+  $("#r-total").textContent = money(total(ids));
+  $("#r-method").textContent = payMethod;
+  const d = new Date();
+  $("#r-time").textContent = `${d.toLocaleDateString("zh-CN")} ${d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })} · 共 ${ids.length} 件`;
+  $("#receipt-wrap").classList.add("show");
+}
+
+$("#again").addEventListener("click", async () => {
+  $("#receipt-wrap").classList.remove("show");
+  counterItems.forEach(it => it.el.remove());
+  counterItems = []; basket = [];
+  cartItems.innerHTML = "";
+  cart.style.left = "960px";
+  buildShelf(); updateShop();
+  await goScene(0);
+  bagInside.innerHTML = ""; tableItems.innerHTML = "";
+});
+
+buildShelf();
+updateShop();
+</script>
+</body>
+</html>
