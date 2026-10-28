@@ -98,8 +98,6 @@
   }
   .cart .front { z-index: 2; }
   .cart.hot .back { filter: drop-shadow(0 0 18px rgba(255, 210, 122, .95)); }
-  .cart.shake { animation: shake .45s; }
-  @keyframes shake { 20%, 60% { transform: translateX(-10px); } 40%, 80% { transform: translateX(10px); } }
   .ci { position: absolute; width: 118px; cursor: grab; transition: left .3s, top .3s; }
   .ci img { width: 100%; filter: drop-shadow(0 4px 3px rgba(0,0,0,.35)); }
   .ci.gone { visibility: hidden; }
@@ -191,13 +189,13 @@
   #receipt .sub { padding-left: 12px; color: #6b665c; }
   #receipt .total { font-weight: 800; font-size: 16px; }
   #receipt .bc { display: block; margin: 8px auto 2px; }
-  #tear-hint {
-    position: absolute; left: 880px; top: 430px; width: 290px; text-align: right;
-    color: var(--cream); font-size: 22px; font-weight: 800; line-height: 1.3; opacity: 0; transition: opacity .3s;
-  }
+  /* 撕小票：不写字，用一串往下流动的箭头 */
+  #tear-hint { position: absolute; left: 1120px; top: 380px; opacity: 0; transition: opacity .3s; }
   #tear-hint.on { opacity: 1; }
-  #tear-hint .arrow { display: inline-block; font-size: 36px; animation: nudge 1s ease-in-out infinite; }
-  @keyframes nudge { 50% { transform: translateY(10px); } }
+  #tear-hint path { fill: none; stroke: var(--gold); stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; opacity: .15; animation: chev 1.2s infinite; }
+  #tear-hint path:nth-child(2) { animation-delay: .2s; }
+  #tear-hint path:nth-child(3) { animation-delay: .4s; }
+  @keyframes chev { 30% { opacity: 1; } 60% { opacity: .15; } }
 
   /* ---------- 打包 ---------- */
   #sc-pack {
@@ -226,14 +224,33 @@
 
   /* ---------- 底部操作栏 ---------- */
   #bar {
-    position: absolute; left: 0; right: 0; bottom: 0; height: 72px; z-index: 40;
-    display: flex; align-items: center; justify-content: space-between; padding: 0 26px;
-    background: rgba(31, 29, 26, .86); color: var(--cream);
+    position: absolute; left: 0; right: 0; bottom: 0; height: 84px; z-index: 40; pointer-events: none;
+    display: flex; align-items: center; justify-content: flex-end; padding: 0 26px;
   }
-  #hint { font-size: 21px; font-weight: 600; display: flex; align-items: center; gap: 12px; }
-  #hint::before { content: "i"; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--gold); color: var(--ink); font: 900 18px Georgia, serif; flex: none; }
-  #hint.warn { color: var(--gold); animation: warn .5s 2; }
-  @keyframes warn { 50% { transform: translateX(8px); } }
+  #bar .btn { pointer-events: auto; }
+
+  /* ---------- 用物品的动作代替文字提示 ---------- */
+  /* 提示目标：发光、轻轻放大 */
+  .cue { animation: cue 1s ease-in-out 2; }
+  @keyframes cue { 50% { filter: drop-shadow(0 0 16px rgba(255, 210, 122, 1)) brightness(1.08); } }
+  .btn.cue, .reg-btn.cue { animation: cuebtn .7s ease-in-out 3; }
+  @keyframes cuebtn { 50% { transform: scale(1.08); box-shadow: 0 0 0 7px rgba(255, 210, 122, .9), 0 0 30px 10px rgba(255, 210, 122, .6); } }
+  #door.cue { animation: cuedoor 1s ease-in-out 2; }
+  @keyframes cuedoor { 50% { background: rgba(255, 240, 190, .2); box-shadow: 0 0 0 6px rgba(255, 210, 122, .85), 0 0 40px 10px rgba(255, 210, 122, .5); } }
+  #belt.cue { animation: belt .5s linear infinite, cuebelt .8s ease-in-out 2; }
+  @keyframes cuebelt { 50% { box-shadow: inset 0 0 0 8px var(--gold); } }
+  /* 出错：抖一下 + 红光 */
+  .nope { animation: nope .5s; }
+  @keyframes nope { 20%, 60% { translate: -10px 0; } 40%, 80% { translate: 10px 0; } }
+  .cart.nope .back, .cart.nope .front { filter: drop-shadow(0 0 16px rgba(217, 86, 74, .95)); }
+  .reg-btn.nope { background: rgba(217, 86, 74, .35); }
+  /* 示范用的半透明手 */
+  #ghost { position: absolute; left: 0; top: 0; z-index: 97; pointer-events: none; display: none; }
+  #ghost .g-hand { position: absolute; left: -38px; top: -40px; width: 76px; height: 76px; opacity: .85; }
+  #ghost .g-hand svg { position: absolute; inset: 0; width: 100%; height: 100%; filter: drop-shadow(0 3px 4px rgba(0,0,0,.3)); }
+  #ghost .g-hand .fist, #ghost.grab .g-hand .open { display: none; }
+  #ghost.grab .g-hand .fist { display: block; }
+  #ghost img { position: absolute; top: 6px; opacity: 0; transform-origin: 50% 0; animation: sway 1s ease-in-out infinite; filter: drop-shadow(0 14px 8px rgba(0,0,0,.25)); }
   .btn {
     border: 0; font: inherit; font-weight: 800; font-size: 22px; cursor: pointer;
     padding: 12px 26px; border-radius: 12px; background: var(--blue); color: #fff;
@@ -326,7 +343,6 @@
   </section>
 
   <div id="bar">
-    <div id="hint"></div>
     <button class="btn hidden" id="checkout-btn" disabled>Checkout <span class="count" id="checkout-count">0 items</span></button>
   </div>
 
@@ -335,10 +351,11 @@
   <div class="content" id="print-layer">
     <div id="printer"></div>
     <div id="paper-clip"><div id="receipt"></div></div>
-    <div id="tear-hint">Pull the receipt down<br>to tear it off <span class="arrow">↓</span></div>
+    <svg id="tear-hint" width="48" height="96" viewBox="0 0 48 96"><path d="M8 10 l16 14 l16 -14"/><path d="M8 40 l16 14 l16 -14"/><path d="M8 70 l16 14 l16 -14"/></svg>
   </div>
 
   <div id="held"><img alt=""></div>
+  <div id="ghost"><img alt=""><div class="g-hand"></div></div>
   <div id="hand">
     <!-- 张开的手（没有描边，用肤色渐变和柔和阴影）-->
     <svg class="open" viewBox="0 0 100 100">
@@ -496,23 +513,9 @@ function barcode(digits, w, h) {
   return `<svg class="bc" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" fill="#1f1d1a" shape-rendering="crispEdges">${r}</svg>`;
 }
 
-/* ---------- 操作提示 ---------- */
-const hint = $("#hint");
-let hintTimer;
-function setHint(text, warn = false, ms = 0) {
-  clearTimeout(hintTimer);
-  hint.textContent = text;
-  hint.classList.remove("warn");
-  if (warn) { void hint.offsetWidth; hint.classList.add("warn"); }
-  if (ms) hintTimer = setTimeout(() => setHint(HINTS[scene]), ms);
-}
-const HINTS = {
-  front: "Click the door to step inside Neighbor Mart.",
-  shelf: "Drag fruit from the shelf into your cart. Drag it back onto the shelf to return it.",
-  checkout: "Drag items from the cart onto the moving belt. The scanner rings them up.",
-  pack: "Drag each item into the bag.",
-  thanks: "Come back soon!",
-};
+/* ---------- 物品的提示动作 ---------- */
+function flag(el, cls) { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); }
+const wiggle = el => el.animate([{ transform: "rotate(0)" }, { transform: "rotate(-5deg) translateY(-6px)" }, { transform: "rotate(5deg) translateY(-6px)" }, { transform: "rotate(0)" }], { duration: 420 });
 
 /* ---------- 场景切换 ---------- */
 let scene = "front";
@@ -520,7 +523,7 @@ function show(name) {
   scene = name;
   document.querySelectorAll(".scene").forEach(s => s.classList.toggle("on", s.id === "sc-" + name));
   $("#checkout-btn").classList.toggle("hidden", name !== "shelf");
-  setHint(HINTS[name]);
+  scheduleDemo(2200);
   if (name === "shelf") $("#cart-home-shelf").appendChild(cartEl);
   if (name === "checkout") $("#cart-home-checkout").appendChild(cartEl);
 }
@@ -715,8 +718,10 @@ function dropTarget(p) {
 }
 /* 只点不拖：轻轻晃一下，提示要拖 */
 function nudge(d) {
-  d.el.animate([{ transform: "rotate(0)" }, { transform: "rotate(-4deg)" }, { transform: "rotate(4deg)" }, { transform: "rotate(0)" }], { duration: 300 });
-  if (scene === "shelf") setHint(d.kind === "shelf" ? "Drag it into the cart — hold the mouse button and move." : "Drag it back onto the shelf to return it.", false, 2600);
+  wiggle(d.el);
+  // 只点了一下：马上用示范手演示把它拖到哪里
+  const to = d.kind === "shelf" ? cartEl : d.kind === "pack" ? $("#bag") : scene === "checkout" ? $("#belt") : shelfEl;
+  setTimeout(() => demoDrag(d.el, to, d.key), 300);
 }
 
 function onDrop(d, target, from) {
@@ -724,8 +729,7 @@ function onDrop(d, target, from) {
   if (kind === "shelf") {
     if (target === "cart") {
       if (cart.length >= MAX_CART) {
-        sfx.error(); cartEl.classList.remove("shake"); void cartEl.offsetWidth; cartEl.classList.add("shake");
-        setHint(`Your cart is full — ${MAX_CART} items max.`, true, 3000);
+        sfx.error(); flag(cartEl, "nope");
         fly(key, from, rectS(el.querySelector("img")), { dur: 380, arc: 60 }).then(() => el.classList.remove("gone"));
         return;
       }
@@ -895,18 +899,18 @@ function updateCheck() {
   const ok = allScanned() && !printed;
   $("#btn-check").classList.toggle("locked", !ok);
   $("#btn-check").classList.toggle("ready", ok);
-  if (ok) setHint("All items scanned. Press Check on the register.");
+
 }
 
 $("#btn-check").addEventListener("click", () => {
   if (!allScanned() || printed) {
-    if (!printed) { sfx.error(); setHint("Scan every item first — the cart and the belt must be empty.", true, 3000); }
+    if (!printed) { sfx.error(); flag($("#btn-check"), "nope"); cart.forEach((it, i) => setTimeout(() => wiggle(it.el), i * 60)); }
     return;
   }
   printReceipt();
 });
 $("#btn-shelf").addEventListener("click", () => {
-  if (scanned.length || onBelt.length) { sfx.error(); setHint("You're already checking out — finish scanning first.", true, 3000); return; }
+  if (scanned.length || onBelt.length) { sfx.error(); flag($("#btn-shelf"), "nope"); return; }
   cancelAnimationFrame(rafId);
   show("shelf");
 });
@@ -958,7 +962,7 @@ async function printReceipt() {
   receipt.style.transition = "";
   receipt.classList.add("bob");
   $("#tear-hint").classList.add("on");
-  setHint("Pull the receipt down to tear it off.");
+  scheduleDemo(1800);
 }
 
 let tear = null;
@@ -1034,7 +1038,7 @@ function putInBag(key, from) {
   dropBounce(el, from);
   sfx.rustle();
   if (inBag === scanned.length) {
-    setTimeout(() => { $("#take-bag").classList.add("on"); setHint("All packed! Take your bag."); sfx.ding(); }, 800);
+    setTimeout(() => { $("#take-bag").classList.add("on"); flag($("#take-bag"), "cue"); sfx.ding(); scheduleDemo(3000); }, 800);
   }
 }
 $("#take-bag").addEventListener("click", async () => {
@@ -1061,6 +1065,124 @@ $("#again").addEventListener("click", () => {
   Object.values(bayEls).forEach(el => el.classList.remove("gone"));
   show("front");
 });
+
+/* =================================================================
+   示范手：用户一会儿没动作时，半透明的手演示下一步该做什么
+   ================================================================= */
+const ghost = $("#ghost"), ghostImg = ghost.querySelector("img");
+ghost.querySelector(".g-hand").innerHTML = hand.innerHTML;
+let idleTimer = 0, demoToken = 0;
+const at = p => `translate(${p.x}px, ${p.y}px)`;
+const mid = (el, fy = .5) => { const r = rectS(el); return { x: r.x + r.w / 2, y: r.y + r.h * fy }; };
+
+function scheduleDemo(ms = 6500) {
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(async () => {
+    const plan = demoPlan();
+    if (plan) await plan();
+    scheduleDemo();
+  }, ms);
+}
+function stopDemo() {
+  demoToken++;
+  ghost.getAnimations().forEach(a => a.cancel());
+  ghostImg.getAnimations().forEach(a => a.cancel());
+  ghost.style.display = "none";
+  ghost.classList.remove("grab");
+  receipt.getAnimations().filter(a => a.id === "demo").forEach(a => a.cancel());
+}
+// 用户一按下就停掉示范，过一阵没动作再演示
+stage.addEventListener("pointerdown", () => { stopDemo(); scheduleDemo(); }, true);
+
+/* 现在该演示什么 */
+function demoPlan() {
+  if (busy || drag || tear) return null;
+  if ($("#dim").classList.contains("on")) return receipt.classList.contains("bob") ? demoPull : null;
+  if (scene === "front") return () => demoTap($("#door"));
+  if (scene === "shelf") {
+    if (cart.length && Math.random() < .4) return () => demoTap($("#checkout-btn"));
+    const keys = Object.keys(bayEls), k = keys[Math.floor(Math.random() * keys.length)];
+    return () => demoDrag(bayEls[k], cartEl, k);
+  }
+  if (scene === "checkout") {
+    if (cart.length) { const it = cart[cart.length - 1]; return () => demoDrag(it.el, $("#belt"), it.key); }
+    if (allScanned() && !printed) return () => demoTap($("#btn-check"));
+    return null;
+  }
+  if (scene === "pack") {
+    const el = packItems.querySelector(".pk:not(.gone)");
+    if (el) return () => demoDrag(el, bagEl, el.dataset.key);
+    if ($("#take-bag").classList.contains("on")) return () => demoTap($("#take-bag"));
+    return null;
+  }
+  if (scene === "thanks") return () => demoTap($("#again"));
+  return null;
+}
+
+function step(frames, dur, token, el = ghost) {
+  if (token !== demoToken) return Promise.resolve(false);
+  return el.animate(frames, { duration: dur, easing: "ease-in-out", fill: "forwards" }).finished.then(() => token === demoToken, () => false);
+}
+
+/* 拿起一件东西，沿弧线搬到目标上放下 */
+async function demoDrag(srcEl, dstEl, key) {
+  stopDemo();
+  const token = demoToken;
+  const a = mid(srcEl.querySelector("img") || srcEl, .35);
+  const b = mid(dstEl, dstEl === cartEl ? .4 : dstEl === bagEl ? .45 : .35);
+  const w = Math.min(Math.max(rectS(srcEl.querySelector("img") || srcEl).w, 90), 170);
+  Object.assign(ghostImg.style, { width: w + "px", left: -w / 2 + "px", opacity: 0 });
+  ghostImg.src = src(key);
+  ghost.style.display = "block";
+  if (!await step([{ transform: at({ x: a.x + 110, y: a.y + 150 }), opacity: 0 }, { transform: at(a), opacity: 1 }], 650, token)) return;
+  wiggle(srcEl);
+  ghost.classList.add("grab");
+  ghostImg.animate([{ opacity: 0 }, { opacity: .7 }], { duration: 200, fill: "forwards" });
+  await wait(260);
+  const frames = [];
+  for (let i = 0; i <= 12; i++) {
+    const t = i / 12;
+    frames.push({ transform: at({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t - 120 * 4 * t * (1 - t) }), opacity: 1 });
+  }
+  if (!await step(frames, 1200, token)) return;
+  ghost.classList.remove("grab");
+  flag(dstEl, "cue");
+  ghostImg.animate([{ opacity: .7, translate: "0 0" }, { opacity: 0, translate: "0 40px" }], { duration: 380, fill: "forwards" });
+  await wait(420);
+  await step([{ opacity: 1 }, { opacity: 0 }], 350, token);
+  if (token === demoToken) ghost.style.display = "none";
+}
+
+/* 移到按钮上按两下 */
+async function demoTap(el) {
+  stopDemo();
+  const token = demoToken, p = mid(el, .55);
+  ghostImg.style.opacity = 0;
+  ghost.style.display = "block";
+  if (!await step([{ transform: at({ x: p.x + 120, y: p.y + 130 }), opacity: 0 }, { transform: at(p), opacity: 1 }], 700, token)) return;
+  flag(el, "cue");
+  for (let i = 0; i < 2; i++) {
+    if (!await step([{ transform: at(p) }, { transform: at(p) + " scale(.82)" }, { transform: at(p) }], 380, token)) return;
+  }
+  await step([{ opacity: 1, transform: at(p) }, { opacity: 0, transform: at({ x: p.x + 60, y: p.y + 70 }) }], 450, token);
+  if (token === demoToken) ghost.style.display = "none";
+}
+
+/* 抓住小票往下拉一点 */
+async function demoPull() {
+  stopDemo();
+  const token = demoToken, p = mid(receipt, .55);
+  ghostImg.style.opacity = 0;
+  ghost.style.display = "block";
+  if (!await step([{ transform: at({ x: p.x - 140, y: p.y + 40 }), opacity: 0 }, { transform: at(p), opacity: 1 }], 650, token)) return;
+  ghost.classList.add("grab");
+  const pull = receipt.animate([{ transform: "translateY(0)" }, { transform: "translateY(26px)", offset: .6 }, { transform: "translateY(0)" }], { duration: 1100, easing: "ease-in-out", id: "demo" });
+  pull.id = "demo";
+  if (!await step([{ transform: at(p) }, { transform: at({ x: p.x, y: p.y + 26 / 1 }), offset: .6 }, { transform: at(p) }], 1100, token)) return;
+  ghost.classList.remove("grab");
+  await step([{ opacity: 1 }, { opacity: 0 }], 350, token);
+  if (token === demoToken) ghost.style.display = "none";
+}
 
 layoutCart();
 show("front");
