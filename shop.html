@@ -132,7 +132,9 @@
     transition: transform .2s;
   }
   .c-item img { width: 100%; height: 100%; }
-  .c-item:not(.scanned):hover { transform: translateY(-8px); }
+  .c-item:not(.scanned):not(.queued):hover { transform: translateY(-8px); }
+  .c-item.queued { cursor: default; }
+  .c-item.away { visibility: hidden; }
   .c-item .check {
     position: absolute; right: -6px; top: -6px; width: 26px; height: 26px; border-radius: 13px;
     background: var(--ok); color: #fff; font-weight: 900; font-size: 16px;
@@ -146,6 +148,22 @@
     animation: beam .45s ease-in-out;
   }
   @keyframes beam { from { top: 0; } 50% { top: 100%; } to { top: 0; opacity: 0; } }
+  /* 自动扫码：商品飞到收银机前，收银机发出红色激光扫一遍 */
+  .scan-item { position: absolute; z-index: 13; filter: drop-shadow(0 10px 8px rgba(0,0,0,.3)); }
+  .scan-item img { width: 100%; height: 100%; }
+  #scan-eye {
+    position: absolute; left: 412px; top: 98px; width: 18px; height: 10px; border-radius: 5px;
+    background: #ff2a3d; box-shadow: 0 0 8px 3px rgba(255,42,61,.6); opacity: .55;
+  }
+  #scan-eye.on { opacity: 1; box-shadow: 0 0 16px 6px rgba(255,42,61,.9); }
+  #laser {
+    position: absolute; inset: 0; z-index: 12; pointer-events: none; opacity: 0;
+    background: linear-gradient(90deg, rgba(255,42,61,.15), rgba(255,42,61,.45));
+  }
+  #laser.on { animation: laser .5s steps(5) ; }
+  @keyframes laser { 0%, 40%, 80% { opacity: .9; } 20%, 60% { opacity: .5; } 100% { opacity: 0; } }
+  #screen.tick { animation: tick .3s; }
+  @keyframes tick { 50% { background: #1d4a2e; transform: scale(1.08); } }
   #pay {
     position: absolute; width: 360px; z-index: 12;
     background: var(--paper); border-radius: 18px; padding: 16px 18px 18px;
@@ -270,7 +288,8 @@
       <div class="tiles"></div>
       <div class="content" id="s2">
         <div id="clerk"><img src="assets/clerk.webp" alt="Cashier"></div>
-        <div id="counter"><img src="assets/counter.webp" alt="Checkout counter"><div id="screen">$0.00</div></div>
+        <div id="counter"><img src="assets/counter.webp" alt="Checkout counter"><div id="screen">$0.00</div><div id="scan-eye"></div></div>
+        <div id="laser"></div>
         <div id="pay">
           <div class="due" id="due">$0.00</div>
           <div class="methods">
@@ -649,9 +668,10 @@ function updateShop() {
 /* =================================================================
    场景二：结账
    ================================================================= */
-const s2 = $("#s2"), screen = $("#screen"), pay = $("#pay");
-let counterItems = [];   // {id, el, slot, scanned, packed}
+const s2 = $("#s2"), screen = $("#screen"), pay = $("#pay"), laser = $("#laser"), eye = $("#scan-eye");
+let counterItems = [];   // {id, el, scanned, done}
 let running = 0;
+let scanQueue = Promise.resolve();   // 点得快时排队，一件扫完再扫下一件
 
 /* 收银台台面上的摆放位置（设计区坐标，跟着收银台走）。东西多时摆成前后两排 */
 function counterSlots(n) {
@@ -689,6 +709,7 @@ $("#to-checkout").addEventListener("click", async () => {
   $("#scan-all").disabled = false;
   const n = basket.length;
   counterItems = [];
+  scanQueue = Promise.resolve();
   const imgs = [...cartItems.children].reverse();   // 从最上层开始往外拿
   for (let i = 0; i < imgs.length; i++) {
     const id = units[+imgs[i].dataset.uid].id, s = counterSlots(n)[i];
@@ -710,30 +731,61 @@ $("#to-checkout").addEventListener("click", async () => {
   busy = false;
 });
 
-async function scan(item) {
+/* 点一下商品：排进队列，轮到它时自动播放扫码动画 */
+function scan(item) {
   if (item.scanned || scene !== 1 || pay.classList.contains("done")) return;
   item.scanned = true;
-  const beam = document.createElement("div");
-  beam.className = "beam";
-  item.el.appendChild(beam);
+  item.el.classList.add("queued");
+  if (counterItems.every(it => it.scanned)) $("#scan-all").disabled = true;
+  scanQueue = scanQueue.then(() => autoScan(item));
+}
+
+/* 商品飞到收银机前 → 激光扫一遍、滴一声、屏幕加价 → 落回原位打勾 */
+async function autoScan(item) {
+  const { id, el } = item;
+  const [cx, cy] = L.counter;
+  const h = 130, w = h * P[id].ar;
+  const spot = { x: cx + 300 - w / 2, y: cy - 30 - h / 2, w, h };
+
+  el.classList.add("away");
+  await fly(id, rectOf(el), fromContent(1, spot), { dur: 360, arc: 60, rot: 0 });
+
+  const held = document.createElement("div");
+  held.className = "scan-item";
+  Object.assign(held.style, { left: spot.x + "px", top: spot.y + "px", width: w + "px", height: h + "px" });
+  held.innerHTML = `<img src="${src(id)}"><div class="beam"></div>`;
+  s2.appendChild(held);
+
+  // 激光：从收银机上的红灯射向商品朝向它的一边
+  const sx = cx + 421, sy = cy + 103, edge = spot.x + w;
+  laser.style.clipPath = `polygon(${sx}px ${sy}px, ${edge}px ${spot.y}px, ${edge - 14}px ${spot.y + h}px)`;
+  bounce(laser, "on");
+  eye.classList.add("on");
+  await wait(320);
   beep(1320, .09);
-  setTimeout(() => beam.remove(), 460);
-  item.el.classList.add("scanned");
-  running += P[item.id].price;
+  running += P[id].price;
   screen.textContent = money(running);
-  if (counterItems.every(it => it.scanned)) {
-    $("#scan-all").disabled = true;
-    await wait(500);
+  bounce(screen, "tick");
+  await wait(220);
+  eye.classList.remove("on");
+
+  const from = rectOf(held);
+  held.remove();
+  await fly(id, from, rectOf(el), { dur: 340, arc: 40, rot: 0 });
+  el.classList.remove("away", "queued");
+  el.classList.add("scanned");
+  item.done = true;
+
+  if (counterItems.every(it => it.done)) {
+    await wait(400);
     $("#due").textContent = money(running);
     pay.classList.add("show");
   }
 }
 
-$("#scan-all").addEventListener("click", async () => {
+$("#scan-all").addEventListener("click", () => {
   $("#scan-all").disabled = true;
-  for (const it of counterItems) {
-    if (!it.scanned) { scan(it); await wait(260); }
-  }
+  counterItems.forEach(scan);
 });
 
 pay.querySelectorAll(".pay-btn").forEach(b => b.addEventListener("click", () => {
