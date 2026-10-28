@@ -1,0 +1,1061 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Neighbor Mart</title>
+<style>
+  :root {
+    --blue: #2f62a3;
+    --blue-light: #5b88c4;
+    --navy: #214978;
+    --screen: #1a2b44;
+    --ink: #1f1d1a;
+    --cream: #f8f1e1;
+    --wall: #efe6d3;
+    --floor: #d6cab2;
+    --stone: #a8a091;
+    --red: #d9564a;
+    --gold: #ffd27a;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: var(--wall);
+    font-family: "Helvetica Neue", Arial, system-ui, sans-serif;
+    color: var(--ink);
+    -webkit-user-select: none; user-select: none;
+    touch-action: none;
+  }
+  img { display: block; -webkit-user-drag: none; pointer-events: none; }
+
+  /* 舞台铺满窗口；1600×900 的设计区 .content 居中，背景向四周延伸 */
+  #stage { position: fixed; left: 0; top: 0; transform-origin: 0 0; overflow: hidden; --ox: 0px; --oy: 0px; }
+  #stage.mouse, #stage.mouse * { cursor: none !important; }
+  .scene { position: absolute; inset: 0; opacity: 0; visibility: hidden; transition: opacity .45s, visibility 0s .45s; }
+  .scene.on { opacity: 1; visibility: visible; transition: opacity .45s; }
+  .content { position: absolute; left: var(--ox); top: var(--oy); width: 1600px; height: 900px; }
+  .scaled { position: absolute; transform-origin: 0 0; }
+
+  /* ---------- 门口 ---------- */
+  #sc-front {
+    background: linear-gradient(#cfe3ee 0, #eef5f4 calc(var(--oy) + 772px), #c9c0ad calc(var(--oy) + 772px), #b9af9b 100%);
+  }
+  #sc-front .curb {
+    position: absolute; left: 0; right: 0; top: calc(var(--oy) + 772px); height: 14px; background: #9d937f;
+  }
+  #sc-front .tiles {
+    position: absolute; left: 0; right: 0; top: calc(var(--oy) + 786px); bottom: 0;
+    background: repeating-linear-gradient(90deg, transparent 0 118px, rgba(0,0,0,.08) 118px 120px);
+  }
+  #building { position: absolute; left: 150px; top: 98px; width: 1300px; }
+  #building img { width: 100%; }
+  #door {
+    position: absolute; left: 593px; top: 323px; width: 414px; height: 449px;
+    border-radius: 4px; transition: box-shadow .25s, background .25s;
+  }
+  #door:hover { background: rgba(255, 240, 190, .16); box-shadow: 0 0 0 6px rgba(255, 210, 122, .8), 0 0 40px 10px rgba(255, 210, 122, .45); }
+  #sc-front.entering .content { transition: transform .7s ease-in; transform: scale(1.7); transform-origin: 800px 560px; }
+
+  /* ---------- 货架 ---------- */
+  #sc-shelf {
+    background:
+      linear-gradient(transparent calc(var(--oy) + 800px), rgba(0,0,0,.06) calc(var(--oy) + 800px), rgba(0,0,0,.06) calc(var(--oy) + 806px), transparent calc(var(--oy) + 806px)),
+      repeating-linear-gradient(90deg, transparent 0 158px, rgba(0,0,0,.05) 158px 160px) 0 calc(var(--oy) + 806px) / 100% 100% no-repeat,
+      linear-gradient(var(--wall) calc(var(--oy) + 800px), var(--floor) calc(var(--oy) + 800px));
+  }
+  .floor-shadow { position: absolute; border-radius: 50%; background: radial-gradient(closest-side, rgba(0,0,0,.28), transparent); }
+  #shelf { width: 1400px; height: 1181px; }
+  #shelf > img { width: 1400px; height: 1181px; position: relative; }
+  /* 立体感：顶面和右侧面 */
+  #shelf .top-face { position: absolute; left: 0; top: -44px; width: 1474px; height: 44px; background: linear-gradient(#6a95cf, #4a7bbd); clip-path: polygon(0 100%, 1400px 100%, 100% 0, 74px 0); }
+  #shelf .side-face { position: absolute; left: 1400px; top: -44px; width: 74px; height: 1225px; background: linear-gradient(90deg, #1b3d69, #275089); clip-path: polygon(0 44px, 100% 0, 100% 1181px, 0 100%); }
+  .bay-item {
+    position: absolute; width: 240px; z-index: 2; cursor: grab;
+    filter: drop-shadow(0 10px 6px rgba(0,0,0,.45));
+  }
+  .bay-item img { width: 100%; }
+  .bay-item:hover { transform: translateY(-6px); transition: transform .15s; }
+  .bay-item.gone { visibility: hidden; }
+  .tag {
+    position: absolute; width: 330px; height: 74px; z-index: 3;
+    background: #fffdf6; border-radius: 6px; padding: 6px 12px;
+    display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto 1fr; column-gap: 10px;
+    box-shadow: 0 4px 0 rgba(0,0,0,.25); border-top: 7px solid var(--gold);
+  }
+  .tag .t-name { font-size: 22px; font-weight: 800; line-height: 1.05; white-space: nowrap; }
+  .tag .t-unit { font-size: 13px; color: #6b665c; font-weight: 600; letter-spacing: .5px; }
+  .tag .t-code { display: flex; align-items: end; gap: 6px; font: 600 11px/1 ui-monospace, Menlo, monospace; color: #6b665c; }
+  .tag .t-price { grid-row: 1 / 4; grid-column: 2; align-self: center; font-size: 46px; font-weight: 900; color: var(--red); letter-spacing: -1px; }
+  .tag .t-price sup { font-size: 22px; vertical-align: 18px; margin: 0 1px; }
+
+  /* ---------- 购物车（后层 + 商品 + 前层铁丝）---------- */
+  .cart { width: 624px; height: 680px; }
+  .cart > img { position: absolute; left: 0; top: 0; width: 624px; height: 680px; }
+  .cart .cart-items {
+    position: absolute; inset: 0;
+    clip-path: polygon(108px -400px, 522px -400px, 522px 215px, 487px 452px, 150px 452px, 108px 215px);
+  }
+  .cart .front { z-index: 2; }
+  .cart.hot .back { filter: drop-shadow(0 0 18px rgba(255, 210, 122, .95)); }
+  .cart.shake { animation: shake .45s; }
+  @keyframes shake { 20%, 60% { transform: translateX(-10px); } 40%, 80% { transform: translateX(10px); } }
+  .ci { position: absolute; width: 118px; cursor: grab; transition: left .3s, top .3s; }
+  .ci img { width: 100%; filter: drop-shadow(0 4px 3px rgba(0,0,0,.35)); }
+  .ci.gone { visibility: hidden; }
+
+  /* ---------- 收银台 ---------- */
+  #sc-checkout { background: linear-gradient(#e9e2d2 calc(var(--oy) + 440px), var(--blue) calc(var(--oy) + 440px)); }
+  /* 收银台图片上半部分是透明的，盖在购物车上面；整体不接收鼠标，只让按钮可以点 */
+  #counter { width: 2200px; height: 962px; pointer-events: none; }
+  #counter .reg-btn { pointer-events: auto; }
+  #counter > img { width: 2200px; height: 962px; position: relative; }
+  #belt {
+    position: absolute; left: 0; top: 373px; width: 968px; height: 216px;
+    background: repeating-linear-gradient(90deg, #22201d 0 70px, #3b3731 70px 76px, #5a554c 76px 80px);
+    animation: belt .5s linear infinite;
+  }
+  #belt.hot { box-shadow: inset 0 0 0 6px var(--gold); }
+  @keyframes belt { to { background-position: 80px 0; } }
+  .bi { position: absolute; width: 165px; z-index: 3; filter: drop-shadow(0 8px 5px rgba(0,0,0,.45)); }
+  .bi img, .pile img { width: 100%; }
+  .pile { position: absolute; width: 125px; filter: drop-shadow(0 6px 4px rgba(0,0,0,.4)); }
+  #scan-glow { position: absolute; left: 990px; top: 416px; width: 110px; height: 130px; border-radius: 4px; box-shadow: 0 0 0 0 rgba(255, 60, 60, 0); }
+  #scan-glow.flash { animation: scanflash .35s; }
+  @keyframes scanflash { 30% { background: rgba(255, 60, 60, .35); box-shadow: 0 0 40px 18px rgba(255, 60, 60, .55); } }
+  /* 屏幕：覆盖原图里写死的 “0 items $0.00”，换成实时内容 */
+  #screen-list {
+    position: absolute; left: 1585px; top: 46px; width: 540px; height: 568px;
+    display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden;
+    font: 600 29px/40px ui-monospace, Menlo, monospace; color: var(--cream);
+  }
+  #screen-list .head { position: absolute; top: 4px; left: 0; right: 0; font-size: 22px; color: #8fa6c8; letter-spacing: 1px; }
+  #screen-list .line { display: flex; justify-content: space-between; padding: 0 6px; border-radius: 6px; }
+  #screen-list .line.new { animation: newline 1s; }
+  @keyframes newline { from { background: rgba(255, 210, 122, .45); } }
+  #screen-total {
+    position: absolute; left: 1575px; top: 618px; width: 560px; height: 142px; background: var(--screen);
+    border-top: 4px dashed #8fa6c8; display: flex; justify-content: space-between; align-items: center; padding: 0 12px;
+    font: 600 34px ui-monospace, Menlo, monospace; color: var(--cream);
+  }
+  #screen-total b { font-size: 66px; }
+  .reg-btn { position: absolute; top: 770px; height: 118px; border-radius: 12px; cursor: pointer; }
+  .reg-btn:hover { background: rgba(255, 255, 255, .12); }
+  #btn-shelf { left: 1590px; width: 126px; }
+  #btn-check { left: 1730px; width: 220px; }
+  #btn-sound { left: 2000px; width: 148px; }
+  #btn-check.locked { background: rgba(26, 43, 68, .62); cursor: not-allowed; }
+  #btn-check.ready { animation: ready 1.2s infinite; }
+  @keyframes ready { 50% { box-shadow: 0 0 0 8px rgba(255, 210, 122, .9), 0 0 36px 12px rgba(255, 210, 122, .6); } }
+  #btn-sound.muted::after { content: ""; position: absolute; left: 12px; right: 12px; top: 50%; height: 8px; margin-top: -4px; background: var(--red); transform: rotate(-24deg); border-radius: 4px; }
+  /* 挂绳价签 */
+  .hang { position: absolute; top: 30px; width: 0; z-index: 6; }
+  .hang .swing { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+  .hang .string { position: absolute; left: -2px; top: 0; width: 4px; height: 120px; background: #8a8170; }
+  .hang .htag {
+    position: absolute; left: -110px; top: 116px; width: 220px; padding: 12px 14px 12px 34px;
+    background: var(--cream); border: 4px solid var(--ink); border-radius: 10px; text-align: center;
+    box-shadow: 0 8px 0 rgba(0,0,0,.2);
+  }
+  .hang .htag::before { content: ""; position: absolute; left: 12px; top: 50%; width: 14px; height: 14px; margin-top: -7px; border-radius: 50%; border: 4px solid var(--ink); background: #e9e2d2; }
+  .hang .htag b { display: block; font-size: 28px; }
+  .hang .htag span { font-size: 40px; font-weight: 900; color: var(--red); }
+
+  /* ---------- 小票 ---------- */
+  #dim { position: absolute; inset: 0; background: rgba(12, 14, 20, .68); opacity: 0; visibility: hidden; z-index: 55; transition: opacity .4s, visibility 0s .4s; }
+  #dim.on { opacity: 1; visibility: visible; transition: opacity .4s; }
+  #print-layer { z-index: 60; pointer-events: none; }
+  #printer {
+    position: absolute; left: 1170px; top: 168px; width: 300px; height: 30px; border-radius: 8px;
+    background: #2b2925; box-shadow: inset 0 -6px 0 #45413a; opacity: 0; transition: opacity .3s;
+  }
+  #printer::after { content: ""; position: absolute; left: 22px; right: 22px; top: 20px; height: 5px; background: #0b0a09; border-radius: 3px; }
+  #printer.on { opacity: 1; }
+  #paper-clip { position: absolute; left: 1195px; top: 190px; width: 250px; height: 700px; overflow: hidden; }
+  #receipt {
+    position: absolute; left: 0; top: 0; width: 250px; pointer-events: auto; cursor: grab;
+    background: var(--cream); padding: 16px 16px 26px; color: var(--ink);
+    font: 500 13px/1.55 ui-monospace, Menlo, monospace;
+    transform: translateY(-105%);
+    filter: drop-shadow(0 10px 10px rgba(0,0,0,.35));
+    -webkit-mask: linear-gradient(#000 0 0) top / 100% calc(100% - 10px) no-repeat, conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) bottom / 16px 10px repeat-x;
+            mask: linear-gradient(#000 0 0) top / 100% calc(100% - 10px) no-repeat, conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) bottom / 16px 10px repeat-x;
+  }
+  #receipt.bob { animation: bob 1.4s ease-in-out infinite; }
+  @keyframes bob { 50% { translate: 0 10px; } }
+  #receipt h2 { margin: 0; text-align: center; font: 700 20px/1.2 "Helvetica Neue", Arial, sans-serif; letter-spacing: 2px; }
+  #receipt .c { text-align: center; }
+  #receipt .muted { color: #6b665c; }
+  #receipt hr { border: 0; border-top: 1.5px dashed #a8a091; margin: 7px 0; }
+  #receipt .row { display: flex; justify-content: space-between; gap: 8px; }
+  #receipt .sub { padding-left: 12px; color: #6b665c; }
+  #receipt .total { font-weight: 800; font-size: 16px; }
+  #receipt .bc { display: block; margin: 8px auto 2px; }
+  #tear-hint {
+    position: absolute; left: 880px; top: 430px; width: 290px; text-align: right;
+    color: var(--cream); font-size: 22px; font-weight: 800; line-height: 1.3; opacity: 0; transition: opacity .3s;
+  }
+  #tear-hint.on { opacity: 1; }
+  #tear-hint .arrow { display: inline-block; font-size: 36px; animation: nudge 1s ease-in-out infinite; }
+  @keyframes nudge { 50% { transform: translateY(10px); } }
+
+  /* ---------- 打包 ---------- */
+  #sc-pack {
+    background: linear-gradient(var(--wall) calc(var(--oy) + 560px), #d7d0bf calc(var(--oy) + 560px), #bdb5a4 calc(var(--oy) + 712px), #8a8273 calc(var(--oy) + 712px), #8a8273 calc(var(--oy) + 724px), var(--blue) calc(var(--oy) + 724px));
+  }
+  #bag { width: 760px; height: 1091px; }
+  #bag > img { position: absolute; left: 0; top: 0; width: 760px; height: 1091px; }
+  #bag .bag-front { opacity: .52; z-index: 2; }
+  #bag .bag-items { position: absolute; inset: 0; clip-path: polygon(40px 60px, 720px 60px, 720px 1078px, 40px 1078px); }
+  #bag.hot .bag-back { filter: drop-shadow(0 0 22px rgba(255, 210, 122, .95)); }
+  .bgi { position: absolute; width: 200px; }
+  .bgi img { width: 100%; }
+  .pk { position: absolute; width: 96px; cursor: grab; filter: drop-shadow(0 7px 4px rgba(0,0,0,.4)); }
+  .pk img { width: 100%; }
+  .pk:hover { transform: translateY(-6px); transition: transform .15s; }
+  .pk.gone { visibility: hidden; }
+  #take-bag { position: absolute; left: 1040px; top: 380px; font-size: 30px; padding: 18px 34px; opacity: 0; transform: translateY(16px); pointer-events: none; transition: opacity .35s, transform .35s; }
+  #take-bag.on { opacity: 1; transform: none; pointer-events: auto; }
+
+  /* ---------- 结束 ---------- */
+  #sc-thanks { background: radial-gradient(circle at 50% 42%, #fffaf0, var(--cream) 45%, #efe2c6); }
+  #thanks-box { position: absolute; left: 0; right: 0; top: 190px; text-align: center; }
+  #thanks-box h1 { margin: 0; font-size: 150px; letter-spacing: 14px; color: var(--navy); font-weight: 900; line-height: 1; }
+  #thanks-box p { margin: 22px 0 40px; font-size: 26px; color: #6b665c; font-weight: 600; }
+  #thanks-box .sum { font: 600 22px ui-monospace, Menlo, monospace; color: var(--ink); margin-bottom: 36px; }
+
+  /* ---------- 底部操作栏 ---------- */
+  #bar {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 72px; z-index: 40;
+    display: flex; align-items: center; justify-content: space-between; padding: 0 26px;
+    background: rgba(31, 29, 26, .86); color: var(--cream);
+  }
+  #hint { font-size: 21px; font-weight: 600; display: flex; align-items: center; gap: 12px; }
+  #hint::before { content: "i"; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--gold); color: var(--ink); font: 900 18px Georgia, serif; flex: none; }
+  #hint.warn { color: var(--gold); animation: warn .5s 2; }
+  @keyframes warn { 50% { transform: translateX(8px); } }
+  .btn {
+    border: 0; font: inherit; font-weight: 800; font-size: 22px; cursor: pointer;
+    padding: 12px 26px; border-radius: 12px; background: var(--blue); color: #fff;
+    box-shadow: 0 5px 0 var(--navy); display: inline-flex; align-items: center; gap: 12px;
+  }
+  .btn:hover { filter: brightness(1.08); }
+  .btn:active { transform: translateY(3px); box-shadow: 0 2px 0 var(--navy); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; transform: none; filter: none; }
+  #checkout-btn .count { background: var(--cream); color: var(--ink); border-radius: 999px; padding: 3px 12px; font-size: 18px; }
+  #checkout-btn.hidden { visibility: hidden; }
+
+  /* ---------- 手形光标 + 手里的商品 ---------- */
+  #hand { position: absolute; left: 0; top: 0; width: 76px; height: 76px; z-index: 100; pointer-events: none; display: none; }
+  #stage.mouse #hand { display: block; }
+  #hand svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #hand .fist, #hand.grab .open { display: none; }
+  #hand.grab .fist { display: block; }
+  #held { position: absolute; left: 0; top: 0; z-index: 99; pointer-events: none; display: none; }
+  #held img { width: 100%; transform-origin: 50% 0; animation: sway 1s ease-in-out infinite; filter: drop-shadow(0 18px 10px rgba(0,0,0,.35)); }
+  @keyframes sway { 0%, 100% { transform: rotate(-5deg); } 50% { transform: rotate(5deg); } }
+  .flyer { position: absolute; z-index: 98; pointer-events: none; filter: drop-shadow(0 10px 8px rgba(0,0,0,.35)); }
+</style>
+</head>
+<body>
+<div id="stage">
+
+  <!-- 1. 超市门口 -->
+  <section class="scene on" id="sc-front">
+    <div class="curb"></div><div class="tiles"></div>
+    <div class="content">
+      <div id="building"><img src="assets/market/building.webp" alt="Neighbor Mart storefront"></div>
+      <div id="door" title="Enter"></div>
+    </div>
+  </section>
+
+  <!-- 2. 货架 -->
+  <section class="scene" id="sc-shelf">
+    <div class="content">
+      <div class="floor-shadow" style="left:60px; top:772px; width:980px; height:60px"></div>
+      <div class="floor-shadow" style="left:1070px; top:778px; width:420px; height:46px"></div>
+      <div id="shelf" class="scaled">
+        <div class="top-face"></div><div class="side-face"></div>
+        <img src="assets/market/shelf.webp" alt="Produce shelf">
+      </div>
+      <div id="cart-home-shelf" class="scaled"></div>
+    </div>
+  </section>
+
+  <!-- 3. 收银台（收银员视角） -->
+  <section class="scene" id="sc-checkout">
+    <div class="content">
+      <div id="cart-home-checkout" class="scaled"></div>
+      <div id="counter" class="scaled">
+        <img src="assets/market/counter.webp" alt="Checkout counter">
+        <div id="belt"></div>
+        <div id="scan-glow"></div>
+        <div id="screen-list"><div class="head">NEIGHBOR MART · LANE 4</div></div>
+        <div id="screen-total"><span id="screen-count">0 items</span><b id="screen-sum">$0.00</b></div>
+        <div class="reg-btn" id="btn-shelf" title="Back to shelf"></div>
+        <div class="reg-btn locked" id="btn-check" title="Check"></div>
+        <div class="reg-btn" id="btn-sound" title="Sound"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. 打包 -->
+  <section class="scene" id="sc-pack">
+    <div class="content">
+      <div class="floor-shadow" style="left:640px; top:690px; width:320px; height:40px"></div>
+      <div id="bag" class="scaled">
+        <img class="bag-back" src="assets/market/bag.webp" alt="Plastic bag">
+        <div class="bag-items"></div>
+        <img class="bag-front" src="assets/market/bag.webp" alt="">
+      </div>
+      <div id="pack-items"></div>
+      <button class="btn" id="take-bag">Take your bag</button>
+    </div>
+  </section>
+
+  <!-- 6. 结束 -->
+  <section class="scene" id="sc-thanks">
+    <div class="content">
+      <div id="thanks-box">
+        <h1>THANK YOU</h1>
+        <p>for shopping at Neighbor Mart</p>
+        <div class="sum" id="thanks-sum"></div>
+        <button class="btn" id="again">Shop again</button>
+      </div>
+    </div>
+  </section>
+
+  <div id="bar">
+    <div id="hint"></div>
+    <button class="btn hidden" id="checkout-btn" disabled>Checkout <span class="count" id="checkout-count">0 items</span></button>
+  </div>
+
+  <!-- 4. 小票：除小票外全部变暗 -->
+  <div id="dim"></div>
+  <div class="content" id="print-layer">
+    <div id="printer"></div>
+    <div id="paper-clip"><div id="receipt"></div></div>
+    <div id="tear-hint">Pull the receipt down<br>to tear it off <span class="arrow">↓</span></div>
+  </div>
+
+  <div id="held"><img alt=""></div>
+  <div id="hand">
+    <!-- 张开的手 -->
+    <svg class="open" viewBox="0 0 64 64">
+      <g fill="#1f1d1a" stroke="#1f1d1a" stroke-width="5" stroke-linejoin="round">
+        <rect x="18" y="28" width="28" height="26" rx="10"/>
+        <rect x="19" y="10" width="7" height="24" rx="3.5"/><rect x="27" y="6" width="7" height="27" rx="3.5"/>
+        <rect x="35" y="8" width="7" height="25" rx="3.5"/><rect x="43" y="14" width="6.5" height="21" rx="3.25"/>
+        <rect x="6" y="30" width="18" height="7.5" rx="3.75" transform="rotate(-38 15 34)"/>
+      </g>
+      <g fill="#f3c9a2">
+        <rect x="18" y="28" width="28" height="26" rx="10"/>
+        <rect x="19" y="10" width="7" height="24" rx="3.5"/><rect x="27" y="6" width="7" height="27" rx="3.5"/>
+        <rect x="35" y="8" width="7" height="25" rx="3.5"/><rect x="43" y="14" width="6.5" height="21" rx="3.25"/>
+        <rect x="6" y="30" width="18" height="7.5" rx="3.75" transform="rotate(-38 15 34)"/>
+      </g>
+      <path d="M24 46 q8 4 16 0" fill="none" stroke="#d9a07a" stroke-width="2.2" stroke-linecap="round"/>
+    </svg>
+    <!-- 握起来的手 -->
+    <svg class="fist" viewBox="0 0 64 64">
+      <g fill="#1f1d1a" stroke="#1f1d1a" stroke-width="5" stroke-linejoin="round">
+        <rect x="14" y="22" width="36" height="30" rx="11"/>
+        <rect x="15" y="17" width="9.5" height="15" rx="4.75"/><rect x="24" y="15" width="9.5" height="15" rx="4.75"/>
+        <rect x="33" y="16" width="9.5" height="15" rx="4.75"/><rect x="42" y="19" width="8.5" height="14" rx="4.25"/>
+        <rect x="11" y="35" width="25" height="9" rx="4.5"/>
+      </g>
+      <g fill="#f3c9a2">
+        <rect x="14" y="22" width="36" height="30" rx="11"/>
+        <rect x="15" y="17" width="9.5" height="15" rx="4.75"/><rect x="24" y="15" width="9.5" height="15" rx="4.75"/>
+        <rect x="33" y="16" width="9.5" height="15" rx="4.75"/><rect x="42" y="19" width="8.5" height="14" rx="4.25"/>
+        <rect x="11" y="35" width="25" height="9" rx="4.5"/>
+      </g>
+      <g stroke="#1f1d1a" stroke-width="2.2" stroke-linecap="round">
+        <path d="M24.5 22 v7"/><path d="M33.5 21 v7"/><path d="M42.5 22 v7"/>
+        <path d="M13 39.5 h22" stroke="#d9a07a"/>
+      </g>
+    </svg>
+  </div>
+</div>
+
+<script>
+/* 9 种水果：按货架从左到右、从上到下摆。价格参考美国超市一盒/一份的常见价位 */
+const FRUITS = [
+  { key: "green-apples", name: "Green Apples", price: 3.99, plu: "4139", unit: "3 LB PACK" },
+  { key: "oranges",      name: "Oranges",      price: 4.49, plu: "3107", unit: "4 CT PACK" },
+  { key: "strawberries", name: "Strawberries", price: 4.99, plu: "4323", unit: "1 LB" },
+  { key: "blueberries",  name: "Blueberries",  price: 4.29, plu: "4240", unit: "1 PINT" },
+  { key: "bananas",      name: "Bananas",      price: 1.99, plu: "4011", unit: "BUNCH" },
+  { key: "lemons",       name: "Lemons",       price: 3.49, plu: "4053", unit: "4 CT PACK" },
+  { key: "peaches",      name: "Peaches",      price: 3.99, plu: "4044", unit: "5 CT PACK" },
+  { key: "cantaloupe",   name: "Cantaloupe",   price: 3.49, plu: "4050", unit: "EACH" },
+  { key: "watermelon",   name: "Watermelon",   price: 5.99, plu: "3421", unit: "CUT SLICES" },
+];
+const BY_KEY = Object.fromEntries(FRUITS.map(f => [f.key, f]));
+/* 处理后托盘图片的宽高比 */
+const AR = { "green-apples": 420 / 366, oranges: 420 / 335, strawberries: 420 / 332, blueberries: 420 / 317,
+  bananas: 420 / 346, lemons: 420 / 317, peaches: 420 / 343, cantaloupe: 420 / 350, watermelon: 420 / 317 };
+const src = key => `assets/market/${key}.webp`;
+const money = n => `$${n.toFixed(2)}`;
+const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const $ = s => document.querySelector(s);
+const MAX_CART = 24;
+
+/* ---------- 版面数据（都按各自原图的像素）---------- */
+const SHELF = { x: 90, y: 55, s: 740 / 1181 };
+const BAY_X = [264.5, 699, 1134];          // 三列格子的中线
+const LIP_Y = [335, 668, 1003];             // 三层隔板上沿：托盘放在这里
+const PANEL_Y = [367, 700, 1037];           // 隔板前沿（贴价签）
+const TRAY_W = 240;
+const CART_AT = { shelf: { x: 1080, y: 368, s: .641 }, checkout: { x: 150, y: 116, s: .5 } };
+const COUNTER = { x: 30, y: 190, s: .7 };
+const BELT = { x0: 0, x1: 968, bottom: 578, speed: 160 };   // 履带：每秒 160px（原图像素）
+const SCAN_X = 1045;                        // 扫描器红线
+const BAG = { x: 618, y: 190, s: .48 };
+
+/* ---------- 舞台缩放：设计区 1600×900 等比放进窗口，四周背景延伸铺满 ---------- */
+const stage = $("#stage");
+let S = 1, sw = 1600, sh = 900;
+function fit() {
+  S = Math.min(innerWidth / 1600, innerHeight / 900);
+  sw = innerWidth / S; sh = innerHeight / S;
+  Object.assign(stage.style, { width: sw + "px", height: sh + "px", transform: `scale(${S})` });
+  stage.style.setProperty("--ox", (sw - 1600) / 2 + "px");
+  stage.style.setProperty("--oy", (sh - 900) / 2 + "px");
+}
+addEventListener("resize", fit); fit();
+const toStage = (cx, cy) => ({ x: cx / S, y: cy / S });
+function place(el, { x, y, s }) { Object.assign(el.style, { left: x + "px", top: y + "px", transform: `scale(${s})` }); }
+place($("#shelf"), SHELF); place($("#counter"), COUNTER); place($("#bag"), BAG);
+place($("#cart-home-shelf"), CART_AT.shelf); place($("#cart-home-checkout"), CART_AT.checkout);
+
+/* ---------- 声音 ---------- */
+let actx, muted = false;
+function tone(freq, dur = .08, type = "sine", vol = .08, delay = 0) {
+  if (muted) return;
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const t = actx.currentTime + delay, o = actx.createOscillator(), g = actx.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    o.connect(g).connect(actx.destination); o.start(t); o.stop(t + dur);
+  } catch (e) {}
+}
+function noise(dur = .15, vol = .1, hp = 1200) {
+  if (muted) return;
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const buf = actx.createBuffer(1, actx.sampleRate * dur, actx.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+    const n = actx.createBufferSource(), f = actx.createBiquadFilter(), g = actx.createGain();
+    n.buffer = buf; f.type = "highpass"; f.frequency.value = hp; g.gain.value = vol;
+    n.connect(f).connect(g).connect(actx.destination); n.start();
+  } catch (e) {}
+}
+const sfx = {
+  pick: () => tone(420, .07, "triangle", .06),
+  drop: () => { tone(160, .12, "sine", .16); tone(120, .1, "sine", .1, .12); tone(140, .06, "sine", .06, .22); },
+  back: () => tone(300, .08, "triangle", .05),
+  scan: () => tone(1480, .11, "square", .05),
+  ding: () => { tone(880, .12, "triangle", .08); tone(1320, .2, "triangle", .08, .12); },
+  print: () => { for (let i = 0; i < 18; i++) tone(260 + (i % 2) * 40, .05, "square", .025, i * .09); },
+  tear: () => noise(.22, .18, 1800),
+  rustle: () => noise(.3, .08, 2500),
+  error: () => { tone(220, .12, "square", .05); tone(180, .16, "square", .05, .12); },
+};
+
+/* ---------- 条形码（UPC-A 编码）---------- */
+const LCODE = ["0001101", "0011001", "0010011", "0111101", "0100011", "0110001", "0101111", "0111011", "0110111", "0001011"];
+function upc(body11) {
+  const d = body11.split("").map(Number);
+  const sum = d.reduce((t, v, i) => t + v * (i % 2 ? 1 : 3), 0);
+  return body11 + ((10 - sum % 10) % 10);
+}
+function barcode(digits, w, h) {
+  const d = digits.split("").map(Number);
+  let bits = "101";
+  for (let i = 0; i < 6; i++) bits += LCODE[d[i]];
+  bits += "01010";
+  for (let i = 6; i < 12; i++) bits += LCODE[d[i]].replace(/./g, c => (c === "0" ? "1" : "0"));
+  bits += "101";
+  const m = w / bits.length;
+  let r = "";
+  for (let i = 0; i < bits.length;) {
+    if (bits[i] === "1") { let j = i; while (bits[j] === "1") j++; r += `<rect x="${(i * m).toFixed(2)}" width="${((j - i) * m).toFixed(2)}" height="${h}"/>`; i = j; }
+    else i++;
+  }
+  return `<svg class="bc" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" fill="#1f1d1a" shape-rendering="crispEdges">${r}</svg>`;
+}
+
+/* ---------- 操作提示 ---------- */
+const hint = $("#hint");
+let hintTimer;
+function setHint(text, warn = false, ms = 0) {
+  clearTimeout(hintTimer);
+  hint.textContent = text;
+  hint.classList.remove("warn");
+  if (warn) { void hint.offsetWidth; hint.classList.add("warn"); }
+  if (ms) hintTimer = setTimeout(() => setHint(HINTS[scene]), ms);
+}
+const HINTS = {
+  front: "Click the door to step inside Neighbor Mart.",
+  shelf: "Drag fruit from the shelf into your cart. Drag it back onto the shelf to return it.",
+  checkout: "Drag items from the cart onto the moving belt. The scanner rings them up.",
+  pack: "Drag each item into the bag.",
+  thanks: "Come back soon!",
+};
+
+/* ---------- 场景切换 ---------- */
+let scene = "front";
+function show(name) {
+  scene = name;
+  document.querySelectorAll(".scene").forEach(s => s.classList.toggle("on", s.id === "sc-" + name));
+  $("#checkout-btn").classList.toggle("hidden", name !== "shelf");
+  setHint(HINTS[name]);
+  if (name === "shelf") $("#cart-home-shelf").appendChild(cartEl);
+  if (name === "checkout") $("#cart-home-checkout").appendChild(cartEl);
+}
+
+/* ---------- 手形光标 ---------- */
+const hand = $("#hand"), held = $("#held");
+let pointer = { x: -100, y: -100 };
+function moveHand(e) {
+  if (e.pointerType === "mouse") stage.classList.add("mouse"); else stage.classList.remove("mouse");
+  pointer = toStage(e.clientX, e.clientY);
+  hand.style.transform = `translate(${pointer.x - 38}px, ${pointer.y - 40}px)`;
+  if (drag && drag.started) held.style.transform = `translate(${pointer.x - drag.w / 2}px, ${pointer.y + 6}px)`;
+}
+stage.addEventListener("pointermove", moveHand);
+stage.addEventListener("pointerdown", moveHand, true);
+document.addEventListener("pointerleave", () => stage.classList.remove("mouse"));
+
+/* ---------- 飞行 / 落下弹跳 ---------- */
+function rectS(el) { const r = el.getBoundingClientRect(); return { x: r.left / S, y: r.top / S, w: r.width / S, h: r.height / S }; }
+function fly(key, from, to, { dur = 420, arc = 80, fade = false } = {}) {
+  const img = document.createElement("img");
+  img.className = "flyer"; img.src = src(key);
+  Object.assign(img.style, { left: from.x + "px", top: from.y + "px", width: from.w + "px" });
+  stage.appendChild(img);
+  const frames = [];
+  for (let i = 0; i <= 10; i++) {
+    const t = i / 10, k = 1 + (to.w / from.w - 1) * t;
+    frames.push({ transform: `translate(${(to.x - from.x) * t}px, ${(to.y - from.y) * t - arc * 4 * t * (1 - t)}px) scale(${k})`, opacity: fade ? 1 - t * t : 1 });
+  }
+  img.style.transformOrigin = "0 0";
+  return img.animate(frames, { duration: dur, easing: "ease-in-out", fill: "forwards" }).finished.then(() => img.remove());
+}
+/* 元素已经放到最终位置：从手里的位置落下来，再弹跳几下 */
+function dropBounce(el, from) {
+  const to = el.getBoundingClientRect(), eff = to.width / el.offsetWidth;
+  const dx = (from.x * S - to.left) / eff, dy = (from.y * S - to.top) / eff, k = (from.w * S) / to.width;
+  el.animate([
+    { transform: `translate(${dx}px, ${dy}px) scale(${k})`, transformOrigin: "0 0", easing: "cubic-bezier(.55,0,1,.45)" },
+    { transform: "translate(0, 0) scale(1)", transformOrigin: "0 0", offset: .45, easing: "cubic-bezier(0,.55,.45,1)" },
+    { transform: "translate(0, -26px)", transformOrigin: "0 0", offset: .62, easing: "cubic-bezier(.55,0,1,.45)" },
+    { transform: "translate(0, 0)", transformOrigin: "0 0", offset: .76, easing: "cubic-bezier(0,.55,.45,1)" },
+    { transform: "translate(0, -10px)", transformOrigin: "0 0", offset: .86, easing: "cubic-bezier(.55,0,1,.45)" },
+    { transform: "translate(0, 0)", transformOrigin: "0 0", offset: .94 },
+    { transform: "translate(0, -3px)", transformOrigin: "0 0", offset: .97 },
+    { transform: "translate(0, 0)", transformOrigin: "0 0" },
+  ], { duration: 820 });
+  setTimeout(sfx.drop, 330);
+}
+
+/* =================================================================
+   货架
+   ================================================================= */
+const shelfEl = $("#shelf");
+const bayEls = {};
+FRUITS.forEach((f, i) => {
+  const col = i % 3, row = Math.floor(i / 3), h = TRAY_W / AR[f.key];
+  const el = document.createElement("div");
+  el.className = "bay-item"; el.dataset.key = f.key;
+  Object.assign(el.style, { left: BAY_X[col] - TRAY_W / 2 + "px", top: LIP_Y[row] - h + 6 + "px" });
+  el.innerHTML = `<img src="${src(f.key)}" alt="${f.name}">`;
+  shelfEl.appendChild(el);
+  bayEls[f.key] = el;
+
+  const code = upc("0" + "4000" + "0" + f.plu + "0");
+  const tag = document.createElement("div");
+  tag.className = "tag";
+  Object.assign(tag.style, { left: BAY_X[col] - 165 + "px", top: PANEL_Y[row] + 6 + "px" });
+  const [d, c] = f.price.toFixed(2).split(".");
+  tag.innerHTML = `<div class="t-name">${f.name}</div><div class="t-unit">${f.unit}</div>
+    <div class="t-code">${barcode(code, 130, 22)}<span>PLU ${f.plu}</span></div>
+    <div class="t-price"><sup>$</sup>${d}<sup>.${c}</sup></div>`;
+  shelfEl.appendChild(tag);
+});
+function restock(key) {
+  const el = bayEls[key];
+  el.classList.remove("gone");
+  el.animate([{ opacity: 0, transform: "translateY(-18px) scale(.92)" }, { opacity: 1, transform: "none" }], { duration: 380, easing: "ease-out" });
+}
+
+/* =================================================================
+   购物车：商品夹在后层和前面的铁丝之间
+   ================================================================= */
+const cartEl = document.createElement("div");
+cartEl.className = "cart";
+cartEl.innerHTML = `<img class="back" src="assets/market/cart-back.webp" alt="Shopping cart"><div class="cart-items"></div><img class="front" src="assets/market/cart-front.webp" alt="">`;
+const cartItemsEl = cartEl.querySelector(".cart-items");
+let cart = [];          // [{ key, el }]
+let uid = 0;
+
+/* 车篮里的位置（车的原图坐标）：每层 4 件立在篮底，越往上越宽，最多 6 层 */
+function cartSlot(i, key) {
+  const row = Math.floor(i / 4), col = i % 4, t = Math.min(row, 5) / 5;
+  const left = 150 - 42 * t, right = 487 + 35 * t, step = (right - left) / 4;
+  const cx = left + step * (col + .5) + (row % 2 ? 9 : -9);
+  const w = 118, h = w / AR[key];
+  return { x: cx - w / 2, y: 448 - row * 44 - h, rot: ((i * 37) % 14) - 7, z: i };
+}
+function layoutCart() {
+  cart.forEach((it, i) => {
+    const s = cartSlot(i, it.key);
+    Object.assign(it.el.style, { left: s.x + "px", top: s.y + "px", zIndex: s.z });
+    it.el.firstChild.style.transform = `rotate(${s.rot}deg)`;
+  });
+  const n = cart.length;
+  $("#checkout-btn").disabled = !n;
+  $("#checkout-count").textContent = plural(n, "item");
+}
+function addToCart(key, from) {
+  const el = document.createElement("div");
+  el.className = "ci"; el.dataset.key = key; el.dataset.id = ++uid;
+  el.innerHTML = `<img src="${src(key)}" alt="${BY_KEY[key].name}">`;
+  cartItemsEl.appendChild(el);
+  cart.push({ key, el, id: uid });
+  layoutCart();
+  dropBounce(el, from);
+}
+function removeFromCart(el) {
+  cart = cart.filter(it => it.el !== el);
+  el.remove();
+  layoutCart();
+}
+
+/* =================================================================
+   拖拽：按下 → 移动超过几像素就拿起来 → 松手时看落在哪里
+   ================================================================= */
+let drag = null;
+function draggableAt(target) {
+  if (scene === "shelf") return target.closest(".bay-item, .ci");
+  if (scene === "checkout") return target.closest(".ci");
+  if (scene === "pack") return target.closest(".pk");
+  return null;
+}
+stage.addEventListener("pointerdown", e => {
+  if (busy) return;
+  const el = draggableAt(e.target);
+  if (!el) return;
+  e.preventDefault();
+  stage.setPointerCapture(e.pointerId);
+  drag = { el, key: el.dataset.key, kind: el.classList.contains("bay-item") ? "shelf" : el.classList.contains("ci") ? "cart" : "pack", sx: e.clientX, sy: e.clientY, started: false };
+});
+stage.addEventListener("pointermove", e => {
+  if (!drag) return;
+  if (!drag.started && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 4) {
+    drag.started = true;
+    const r = rectS(drag.el.querySelector("img"));
+    drag.w = Math.max(r.w, scene === "checkout" ? 120 : r.w);
+    held.style.width = drag.w + "px";
+    held.firstChild.src = src(drag.key);
+    held.style.display = "block";
+    held.style.transform = `translate(${pointer.x - drag.w / 2}px, ${pointer.y + 6}px)`;
+    drag.el.classList.add("gone");
+    hand.classList.add("grab");
+    sfx.pick();
+  }
+  if (drag.started) {
+    const t = dropTarget(pointer);
+    document.querySelectorAll(".hot").forEach(n => n !== t?.el && n.classList.remove("hot"));
+    t?.el.classList.add("hot");
+  }
+});
+stage.addEventListener("pointerup", e => {
+  if (!drag) return;
+  const d = drag; drag = null;
+  hand.classList.remove("grab");
+  document.querySelectorAll(".hot").forEach(n => n.classList.remove("hot"));
+  if (!d.started) { nudge(d); return; }
+  const from = rectS(held.firstChild);
+  held.style.display = "none";
+  const t = dropTarget(pointer);
+  onDrop(d, t ? t.name : null, from);
+});
+stage.addEventListener("pointercancel", () => {
+  if (!drag) return;
+  drag.el.classList.remove("gone"); held.style.display = "none"; hand.classList.remove("grab"); drag = null;
+});
+
+function inside(el, p, pad = 0) {
+  const r = rectS(el);
+  return p.x > r.x - pad && p.x < r.x + r.w + pad && p.y > r.y - pad && p.y < r.y + r.h + pad;
+}
+function dropTarget(p) {
+  if (scene === "shelf") {
+    if (inside(cartEl, p, 20)) return { name: "cart", el: cartEl };
+    if (inside(shelfEl, p, 10)) return { name: "shelf", el: shelfEl };
+  }
+  if (scene === "checkout") {
+    const r = rectS($("#belt"));
+    if (p.x > r.x && p.x < r.x + r.w && p.y > r.y - 90 && p.y < r.y + r.h + 20) return { name: "belt", el: $("#belt") };
+  }
+  if (scene === "pack" && inside($("#bag"), p, 20)) return { name: "bag", el: $("#bag") };
+  return null;
+}
+/* 只点不拖：轻轻晃一下，提示要拖 */
+function nudge(d) {
+  d.el.animate([{ transform: "rotate(0)" }, { transform: "rotate(-4deg)" }, { transform: "rotate(4deg)" }, { transform: "rotate(0)" }], { duration: 300 });
+  if (scene === "shelf") setHint(d.kind === "shelf" ? "Drag it into the cart — hold the mouse button and move." : "Drag it back onto the shelf to return it.", false, 2600);
+}
+
+function onDrop(d, target, from) {
+  const { key, el, kind } = d;
+  if (kind === "shelf") {
+    if (target === "cart") {
+      if (cart.length >= MAX_CART) {
+        sfx.error(); cartEl.classList.remove("shake"); void cartEl.offsetWidth; cartEl.classList.add("shake");
+        setHint(`Your cart is full — ${MAX_CART} items max.`, true, 3000);
+        fly(key, from, rectS(el.querySelector("img")), { dur: 380, arc: 60 }).then(() => el.classList.remove("gone"));
+        return;
+      }
+      addToCart(key, from);
+      setTimeout(() => restock(key), 350);
+    } else {
+      sfx.back();
+      fly(key, from, rectS(el.querySelector("img")), { dur: 340, arc: 40 }).then(() => el.classList.remove("gone"));
+    }
+    return;
+  }
+  if (kind === "cart") {
+    if (scene === "shelf" && target === "shelf") {
+      removeFromCart(el);
+      sfx.back();
+      fly(key, from, rectS(bayEls[key].querySelector("img")), { dur: 420, arc: 70, fade: true });
+      return;
+    }
+    if (scene === "checkout" && target === "belt") {
+      removeFromCart(el);
+      putOnBelt(key, from);
+      return;
+    }
+    // 放回车里原来的位置
+    fly(key, from, rectS(el.querySelector("img")), { dur: 340, arc: 40 }).then(() => el.classList.remove("gone"));
+    return;
+  }
+  if (kind === "pack") {
+    if (target === "bag") { el.remove(); putInBag(key, from); }
+    else fly(key, from, rectS(el.querySelector("img")), { dur: 340, arc: 40 }).then(() => el.classList.remove("gone"));
+  }
+}
+
+/* =================================================================
+   门口 → 货架 → 收银
+   ================================================================= */
+let busy = false;
+$("#door").addEventListener("click", async () => {
+  if (busy) return;
+  busy = true;
+  sfx.ding();
+  $("#sc-front").classList.add("entering");
+  await wait(450);
+  show("shelf");
+  await wait(500);
+  $("#sc-front").classList.remove("entering");
+  busy = false;
+});
+
+$("#checkout-btn").addEventListener("click", () => {
+  if (!cart.length || busy) return;
+  startCheckout();
+});
+
+/* =================================================================
+   收银：履带一直转；商品随履带移动，经过扫描器时计价，扫完堆到右边
+   ================================================================= */
+const counterEl = $("#counter"), beltEl = $("#belt"), screenList = $("#screen-list");
+let onBelt = [];        // [{ key, el, x, scanned }]
+let scanned = [];       // 扫过的商品 key（按扫描顺序）
+let pileCount = 0, total = 0, orderNo = "";
+let lastT = 0, rafId = 0, printed = false;
+
+function startCheckout() {
+  onBelt.forEach(b => b.el.remove());
+  onBelt = []; scanned = []; pileCount = 0; total = 0; printed = false;
+  counterEl.querySelectorAll(".pile, .hang").forEach(n => n.remove());
+  screenList.querySelectorAll(".line").forEach(n => n.remove());
+  orderNo = String(100000 + Math.floor(Math.random() * 900000));
+  updateScreen();
+  show("checkout");
+  lastT = performance.now();
+  cancelAnimationFrame(rafId);
+  rafId = requestAnimationFrame(tick);
+}
+
+/* 屏幕坐标 → 收银台原图坐标 */
+function toCounter(p) {
+  const r = counterEl.getBoundingClientRect();
+  return { x: (p.x * S - r.left) / r.width * 2200, y: (p.y * S - r.top) / r.height * 962 };
+}
+function putOnBelt(key, from) {
+  const w = 165, h = w / AR[key];
+  let x = Math.min(Math.max(toCounter({ x: from.x + from.w / 2, y: 0 }).x - w / 2, BELT.x0 + 4), BELT.x1 - w - 140);
+  // 别和履带上已有的商品叠在一起：放到它们后面
+  onBelt.forEach(b => { if (Math.abs(b.x - x) < w + 8) x = Math.min(x, b.x - w - 12); });
+  x = Math.max(x, BELT.x0 - w * .3);
+  const el = document.createElement("div");
+  el.className = "bi";
+  el.innerHTML = `<img src="${src(key)}" alt="${BY_KEY[key].name}">`;
+  Object.assign(el.style, { left: x + "px", top: BELT.bottom - h + "px" });
+  counterEl.appendChild(el);
+  onBelt.push({ key, el, x, w, scanned: false });
+  dropBounce(el, from);
+  updateCheck();
+}
+
+function tick(t) {
+  const dt = Math.min(.05, (t - lastT) / 1000);
+  lastT = t;
+  for (const b of [...onBelt]) {
+    b.x += BELT.speed * dt;
+    b.el.style.left = b.x + "px";
+    const cx = b.x + b.w / 2;
+    if (!b.scanned && cx >= SCAN_X) scan(b);
+    if (cx >= SCAN_X + 90) toPile(b);
+  }
+  if (scene === "checkout") rafId = requestAnimationFrame(tick);
+}
+
+function scan(b) {
+  b.scanned = true;
+  const f = BY_KEY[b.key];
+  scanned.push(b.key);
+  total += f.price;
+  sfx.scan();
+  const glow = $("#scan-glow");
+  glow.classList.remove("flash"); void glow.offsetWidth; glow.classList.add("flash");
+  const line = document.createElement("div");
+  line.className = "line new";
+  line.innerHTML = `<span>${f.name}</span><span>${money(f.price)}</span>`;
+  screenList.appendChild(line);
+  [...screenList.querySelectorAll(".line")].slice(0, -13).forEach(n => n.remove());
+  updateScreen();
+  hangTag(f);
+}
+
+/* 扫描器上方垂下一张挂绳价签：落下、摆几下、飘走 */
+function hangTag(f) {
+  const hang = document.createElement("div");
+  hang.className = "hang";
+  hang.style.left = SCAN_X + "px";
+  hang.innerHTML = `<div class="swing"><div class="string"></div><div class="htag"><b>${f.name}</b><span>${money(f.price)}</span></div></div>`;
+  counterEl.appendChild(hang);
+  const swing = hang.firstChild;
+  hang.animate([{ transform: "translateY(-320px)" }, { transform: "translateY(0)", offset: .7 }, { transform: "translateY(-12px)", offset: .85 }, { transform: "translateY(0)" }], { duration: 520, easing: "ease-in" });
+  swing.animate([
+    { transform: "rotate(0)" }, { transform: "rotate(16deg)" }, { transform: "rotate(-12deg)" },
+    { transform: "rotate(8deg)" }, { transform: "rotate(-5deg)" }, { transform: "rotate(2deg)" }, { transform: "rotate(0)" },
+  ], { duration: 1500, delay: 380, easing: "ease-in-out" });
+  hang.animate([{ transform: "translate(0, 0)", opacity: 1 }, { transform: "translate(90px, -360px) rotate(14deg)", opacity: 0 }],
+    { duration: 900, delay: 1900, easing: "ease-in", fill: "forwards" }).finished.then(() => hang.remove());
+}
+
+/* 扫过的商品离开履带，堆在右边的台面上 */
+function toPile(b) {
+  onBelt = onBelt.filter(x => x !== b);
+  const i = pileCount++;
+  const col = i % 3, row = Math.floor(i / 3), w = 125, h = w / AR[b.key];
+  const from = rectS(b.el.querySelector("img"));
+  b.el.remove();
+  const el = document.createElement("div");
+  el.className = "pile";
+  el.innerHTML = `<img src="${src(b.key)}" alt="">`;
+  Object.assign(el.style, { left: 1118 + col * 138 + (row % 2) * 16 + "px", top: 536 - row * 34 - h + "px", zIndex: 4 + i });
+  counterEl.appendChild(el);
+  dropBounce(el, from);
+  updateCheck();
+}
+
+function updateScreen() {
+  $("#screen-count").textContent = plural(scanned.length, "item");
+  $("#screen-sum").textContent = money(total);
+}
+function allScanned() { return !cart.length && !onBelt.length && scanned.length > 0; }
+function updateCheck() {
+  const ok = allScanned() && !printed;
+  $("#btn-check").classList.toggle("locked", !ok);
+  $("#btn-check").classList.toggle("ready", ok);
+  if (ok) setHint("All items scanned. Press Check on the register.");
+}
+
+$("#btn-check").addEventListener("click", () => {
+  if (!allScanned() || printed) {
+    if (!printed) { sfx.error(); setHint("Scan every item first — the cart and the belt must be empty.", true, 3000); }
+    return;
+  }
+  printReceipt();
+});
+$("#btn-shelf").addEventListener("click", () => {
+  if (scanned.length || onBelt.length) { sfx.error(); setHint("You're already checking out — finish scanning first.", true, 3000); return; }
+  cancelAnimationFrame(rafId);
+  show("shelf");
+});
+$("#btn-sound").addEventListener("click", () => {
+  muted = !muted;
+  $("#btn-sound").classList.toggle("muted", muted);
+  if (!muted) tone(660, .1, "triangle", .08);
+});
+
+/* =================================================================
+   小票：从收银机打印出来，往下拖一点就撕下
+   ================================================================= */
+const receipt = $("#receipt");
+async function printReceipt() {
+  printed = true;
+  updateCheck();
+  sfx.ding();
+  const counts = {};
+  scanned.forEach(k => counts[k] = (counts[k] || 0) + 1);
+  const d = new Date(), pad = n => String(n).padStart(2, "0");
+  const time = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  receipt.innerHTML = `
+    <h2>NEIGHBOR MART</h2>
+    <div class="c muted">Fresh Produce · Grocery</div>
+    <div class="c">Lane 4 · Cashier 07</div>
+    <div class="c">${time}</div>
+    <div class="c">Order No. ${orderNo}</div>
+    <hr>
+    ${Object.entries(counts).map(([k, n]) => `
+      <div class="row"><span>${BY_KEY[k].name}</span><span>${money(BY_KEY[k].price * n)}</span></div>
+      ${n > 1 ? `<div class="sub">${n} @ ${money(BY_KEY[k].price)}</div>` : ""}`).join("")}
+    <hr>
+    <div class="row"><span>ITEMS</span><span>${scanned.length}</span></div>
+    <div class="row total"><span>TOTAL</span><span>${money(total)}</span></div>
+    <hr>
+    <div class="c muted">THANK YOU · COME AGAIN</div>
+    ${barcode(upc("2" + orderNo.padStart(10, "0")), 200, 34)}
+    <div class="c muted" style="font-size:11px">${orderNo}</div>`;
+  receipt.classList.remove("bob");
+  receipt.style.transform = "translateY(-105%)";
+  receipt.style.transition = "none";
+  $("#dim").classList.add("on");
+  $("#printer").classList.add("on");
+  await wait(450);
+  sfx.print();
+  receipt.style.transition = "transform 1.7s steps(18)";
+  receipt.style.transform = "translateY(0)";
+  await wait(1750);
+  receipt.style.transition = "";
+  receipt.classList.add("bob");
+  $("#tear-hint").classList.add("on");
+  setHint("Pull the receipt down to tear it off.");
+}
+
+let tear = null;
+receipt.addEventListener("pointerdown", e => {
+  if (!receipt.classList.contains("bob")) return;
+  e.stopPropagation();
+  receipt.setPointerCapture(e.pointerId);
+  tear = { y: e.clientY };
+  hand.classList.add("grab");
+});
+receipt.addEventListener("pointermove", e => {
+  moveHand(e);
+  if (!tear) return;
+  const dy = Math.max(0, e.clientY - tear.y);
+  receipt.style.transform = `translateY(${dy / S}px)`;
+  if (dy >= 20) tearOff();
+});
+receipt.addEventListener("pointerup", () => {
+  if (!tear) return;
+  tear = null; hand.classList.remove("grab");
+  receipt.style.transform = "translateY(0)";
+});
+async function tearOff() {
+  tear = null;
+  hand.classList.remove("grab");
+  receipt.classList.remove("bob");
+  sfx.tear();
+  $("#tear-hint").classList.remove("on");
+  receipt.animate([{ transform: receipt.style.transform }, { transform: "translateY(760px) rotate(10deg)", opacity: 0 }], { duration: 700, easing: "ease-in", fill: "forwards" });
+  await wait(600);
+  $("#dim").classList.remove("on");
+  $("#printer").classList.remove("on");
+  cancelAnimationFrame(rafId);
+  startPacking();
+  await wait(500);
+  receipt.getAnimations().forEach(a => a.cancel());
+  receipt.style.transform = "translateY(-105%)";
+}
+
+/* =================================================================
+   打包：商品摆在台面上，一件件拖进透明塑料袋
+   ================================================================= */
+const bagEl = $("#bag"), bagItems = bagEl.querySelector(".bag-items"), packItems = $("#pack-items");
+let inBag = 0;
+function startPacking() {
+  bagItems.innerHTML = ""; packItems.innerHTML = "";
+  bagEl.getAnimations().forEach(a => a.cancel());
+  bagEl.style.opacity = 1;
+  inBag = 0;
+  $("#take-bag").classList.remove("on");
+  // 台面上袋子两边各 5 件一排，最多 3 排（前排先摆）
+  scanned.forEach((key, i) => {
+    const side = i % 2, k = Math.floor(i / 2), row = Math.floor(k / 5), col = k % 5;
+    const w = 96, h = w / AR[key];
+    const x = side ? 1030 + col * 104 : 470 - col * 104;
+    const el = document.createElement("div");
+    el.className = "pk"; el.dataset.key = key;
+    el.innerHTML = `<img src="${src(key)}" alt="${BY_KEY[key].name}">`;
+    Object.assign(el.style, { left: x + "px", top: 704 - row * 44 - h + "px", zIndex: 10 - row });
+    packItems.appendChild(el);
+    el.animate([{ opacity: 0, transform: "translateY(-30px)" }, { opacity: 1, transform: "none" }], { duration: 350, delay: i * 40, fill: "backwards" });
+  });
+  show("pack");
+}
+function putInBag(key, from) {
+  const i = inBag++;
+  const row = Math.floor(i / 3), col = i % 3, w = 200, h = w / AR[key];
+  const el = document.createElement("div");
+  el.className = "bgi";
+  el.innerHTML = `<img src="${src(key)}" alt="" style="transform:rotate(${((i * 29) % 12) - 6}deg)">`;
+  Object.assign(el.style, { left: 112 + col * 180 + (row % 2 ? 20 : -10) + "px", top: 1046 - row * 82 - h + "px", zIndex: i });
+  bagItems.appendChild(el);
+  dropBounce(el, from);
+  sfx.rustle();
+  if (inBag === scanned.length) {
+    setTimeout(() => { $("#take-bag").classList.add("on"); setHint("All packed! Take your bag."); sfx.ding(); }, 800);
+  }
+}
+$("#take-bag").addEventListener("click", async () => {
+  if (busy) return;
+  busy = true;
+  $("#take-bag").classList.remove("on");
+  sfx.rustle();
+  await bagEl.animate([
+    { transform: `scale(${BAG.s})` },
+    { transform: `translateY(20px) scale(${BAG.s})`, offset: .2 },
+    { transform: `translateY(-1300px) rotate(-8deg) scale(${BAG.s})`, opacity: 1 },
+  ], { duration: 1100, easing: "cubic-bezier(.5,0,.8,.4)", fill: "forwards" }).finished;
+  $("#thanks-sum").textContent = `${plural(scanned.length, "item")} · ${money(total)} · Order No. ${orderNo}`;
+  show("thanks");
+  sfx.ding();
+  busy = false;
+});
+
+/* ---------- 再来一次：回到门口 ---------- */
+$("#again").addEventListener("click", () => {
+  cart.forEach(it => it.el.remove());
+  cart = []; layoutCart();
+  scanned = []; total = 0;
+  Object.values(bayEls).forEach(el => el.classList.remove("gone"));
+  show("front");
+});
+
+layoutCart();
+show("front");
+</script>
+</body>
+</html>
