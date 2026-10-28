@@ -231,10 +231,6 @@ body{background:var(--page);color:var(--cream);font-family:var(--ui);padding-blo
   font-weight:700;font-size:max(14px,calc(var(--u)*2.2));padding:.55em 1.3em;box-shadow:0 calc(var(--u)*.45) 0 #9e2f25;animation:nudge 1s ease-in-out infinite alternate}
 
 /* ---------- picture hints instead of words ---------- */
-.ghost{position:absolute;left:0;top:0;z-index:9;pointer-events:none;width:calc(var(--u)*6.5);margin:calc(var(--u)*-3) 0 0 calc(var(--u)*-3.25)}
-.ghost svg{display:block;width:100%;height:auto;position:relative;z-index:1}
-.ghost .f{transform-box:fill-box;transform-origin:50% 100%;transform:scaleY(.5)}
-.ghost .g-item{position:absolute;left:calc(var(--u)*-1.5);top:calc(var(--u)*2.6);width:calc(var(--u)*9.5);aspect-ratio:1;opacity:.75}
 #check.ready{animation:glow 1.1s ease-in-out infinite}
 @keyframes glow{50%{box-shadow:0 0 0 calc(var(--u)*.5) var(--sun),0 0 calc(var(--u)*2.6) calc(var(--u)*.8) rgb(242 193 78 / .8)}}
 .shake{animation:shake .45s ease-in-out}
@@ -564,29 +560,10 @@ function setScene(s){
   $('sShop').hidden=s!=='shop';$('sCheck').hidden=s!=='checkout';$('sBag').hidden=!(s==='bag'||s==='end');
   cartEl.hidden=!(s==='shop'||s==='checkout');$('end').hidden=s!=='end';
   stopGhost();
-  if(s==='shop'&&!cart.length)ghost('.prod','#cart','gapple','shop');
-  if(s==='checkout'&&cart.length&&!lines.length&&!belt.length)ghost('#cartPile .pi','#belt',cart[0].id,'checkout');
-  if(s==='bag'&&area.length)ghost('#area .ai','#bag',area[0].id,'bag');
 }
 function shake(el){el.classList.remove('shake');void el.offsetWidth;el.classList.add('shake')}
 function updateReady(){$('check').classList.toggle('ready',!checked&&!cart.length&&!belt.length&&lines.length>0)}
-/* a faint hand shows the move once: pick here, drop there */
-var ghostAnim=null,ghostEl=null,ghostT=0;
-function stopGhost(){clearTimeout(ghostT);if(ghostAnim){ghostAnim.cancel();ghostAnim=null}if(ghostEl){ghostEl.remove();ghostEl=null}}
-function ghost(fromSel,toSel,id,sc){
-  if(still)return;
-  ghostT=setTimeout(function(){
-    if(scene!==sc||held)return;
-    var a=document.querySelector(fromSel),b=document.querySelector(toSel);if(!a||!b)return;
-    var sr=stage.getBoundingClientRect(),ra=a.getBoundingClientRect(),rb=b.getBoundingClientRect();if(!ra.width||!rb.width)return;
-    ghostEl=document.createElement('div');ghostEl.className='ghost';
-    ghostEl.innerHTML='<span class="g-item">'+art(id)+'</span>'+$('hand').innerHTML;stage.appendChild(ghostEl);
-    var x0=ra.left+ra.width/2-sr.left,y0=ra.top+ra.height*.4-sr.top,x1=rb.left+rb.width/2-sr.left,y1=rb.top+rb.height*.4-sr.top;
-    function T(x,y){return 'translate('+x+'px,'+y+'px)'}
-    ghostAnim=ghostEl.animate([{transform:T(x0,y0),opacity:0},{transform:T(x0,y0),opacity:.9,offset:.12},{transform:T(x0,y0-14),opacity:.9,offset:.22},
-      {transform:T(x1,y1),opacity:.9,offset:.7},{transform:T(x1,y1+8),opacity:0,offset:.88},{transform:T(x1,y1+8),opacity:0}],{duration:2400,iterations:Infinity,easing:'ease-in-out'});
-  },700);
-}
+function stopGhost(){}
 function toast(t){var el=$('toast');el.textContent=t;el.hidden=false;clearTimeout(toastT);toastT=setTimeout(function(){el.hidden=true},2200)}
 function beep(f,len){
   if(!sound)return;
